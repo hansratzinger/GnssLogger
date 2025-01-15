@@ -254,3 +254,7 @@ double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
 
   return R * c; // Entfernung in Metern
 }
+
+double calculateDifference(double firstData,  double secoundData) {
+  return firstData - secoundData;
+}

@@ -20,5 +20,6 @@ String getDirectionLng(double longitude);
 String convertToDMM(double decimalDegrees);
 void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus &gps);
 double calculateDistance(double lat1, double lon1, double lat2, double lon2);
+double calculateDifference(double firstData,  double secoundData);
 
 #endif // SD_CARD_H  
