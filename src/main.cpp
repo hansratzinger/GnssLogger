@@ -10,6 +10,8 @@
 
 unsigned long start = millis();
 String gpstime, date, lat, lon, speed, altitude ,hdop, satellites, logging, firstline;
+String gpstimeLast, dateLast, latLast, lonLast, speedLast, altitudeLast ,hdopLast, satellitesLast, loggingLast, firstlineLast;  
+double distanceLast;
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -79,7 +81,14 @@ void loop() {
       speed = String(gps.speed.knots());
       altitude = String(gps.altitude.meters());
       firstline = "Date,UTC,Lat,N/S,Lon,E/W,knots,Alt,HDOP,Satellites\n";
-      logging = date + "," + gpstime + "," + lat + "," + directionLat + "," + lon + "," +  directionLng + "," + speed + "," + altitude + "," + hdop + "," + satellites + "\n";
+      logging = date + "," + gpstime + "," + lat + "," + directionLat + "," + lon + "," +  directionLng + "," + speed + "," + altitude + "," + hdop + "," + satellites;
+
+      // Berechne die Entfernung zum letzten Punkt
+      if (latLast != "" && lonLast != "") {
+      distanceLast = calculateDistance(lat.toDouble(), lon.toDouble(), latLast.toDouble(), lonLast.toDouble());
+      logging += "," + String(distanceLast);
+      }
+      logging += "\n";
 
       if (date != "2000/0/0") {
       // SD card    
@@ -114,7 +123,19 @@ void loop() {
       Serial.println(hdop); 
       Serial.print("Satellites = "); 
       Serial.println(satellites); 
+      
+      Serial.print("Distance (m) = ");
+      Serial.println(distanceLast);
       Serial.println("----------------------------");
+
+      // Save the last values
+      gpstimeLast = gpstime;
+      dateLast = date;
+      latLast = lat;
+      lonLast = lon;
+
+
+
     }
     delay(3000);
   }
