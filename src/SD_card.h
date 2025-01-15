@@ -17,5 +17,7 @@ void testFileIO(fs::FS &fs, const char *path);
 String generateFileName(TinyGPSPlus &gps);
 String getDirectionLat(double latitude);
 String getDirectionLng(double longitude);
+String convertToDMM(double decimalDegrees);
+void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus &gps);
 
 #endif // SD_CARD_H  

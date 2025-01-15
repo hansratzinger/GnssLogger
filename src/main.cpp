@@ -13,6 +13,9 @@
 #define TXD2 17
 #define GPS_BAUD 115200
 
+unsigned long start = millis();
+String gpstime, date, lat, lon, speed, altitude ,hdop, satellites, logging, firstline;
+
 // The TinyGPS++ object
 TinyGPSPlus gps;
 
@@ -61,34 +64,30 @@ void setup() {
 
 void loop() {
   // This sketch displays information every time a new sentence is correctly encoded.
-  unsigned long start = millis();
-  
-  String time, date, lat, lon, speed, altitude ,hdop, satellites, logging, firstline;
-
-  while (millis() - start < 1000) {
-    while (gpsSerial.available() > 0) {
+  while (gpsSerial.available() > 0) {
       gps.encode(gpsSerial.read());
     }
     if (gps.location.isUpdated()) {
-      lat = gps.location.lat();      
-      lon = gps.location.lng();
+      lat = String(gps.location.lat(), 6);      
+      lon = String(gps.location.lng(), 6);
 
       // Bestimme die Himmelsrichtung
       String directionLat = getDirectionLat(gps.location.lat());
       String directionLng = getDirectionLng(gps.location.lng());
 
-      time = String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second());
+      char timeBuffer[10];
+      sprintf(timeBuffer, "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
+      gpstime = String(timeBuffer);
       date = String(gps.date.year()) + "/" + String(gps.date.month()) + "/" + String(gps.date.day());
       hdop = String(gps.hdop.hdop());
       satellites = String(gps.satellites.value());
       speed = String(gps.speed.knots());
       altitude = String(gps.altitude.meters());
-      firstline = "Date,UTC,Lat,Lon,knots,Alt,HDOP,Satellites\n";
-      logging = date + "," + time + "," + lat + " " + directionLat + "," + lon + " " +  directionLng + "," + speed + "," + altitude + "," + hdop + "," + satellites + "\n";
+      firstline = "Date,UTC,Lat,N/S,Lon,E/W,knots,Alt,HDOP,Satellites\n";
+      logging = date + "," + gpstime + "," + lat + "," + directionLat + "," + lon + "," +  directionLng + "," + speed + "," + altitude + "," + hdop + "," + satellites + "\n";
 
-
+      if (date != "2000/0/0") {
       // SD card    
-
       // Generiere den Dateinamen basierend auf dem aktuellen Datum
       String fileName = generateFileName(gps);
 
@@ -101,17 +100,16 @@ void loop() {
       // Schreibe die Daten in die Datei
       appendFile(SD, fileName.c_str(), logging.c_str());
 
-      // Serial monitor
-          
+      // Serial monitor          
       Serial.print("Date: ");
       Serial.println(date);
       Serial.print("Time: ");
-      Serial.println(time);
+      Serial.println(gpstime);
       Serial.print("LAT: ");
-      Serial.print(gps.location.lat());
+      Serial.print(lat);
       Serial.println(" " + directionLat);
       Serial.print("LON: "); 
-      Serial.print(gps.location.lng());
+      Serial.print(lon);
       Serial.println(" " + directionLng);
       Serial.print("SPEED (knots) = "); 
       Serial.println(speed); 
@@ -122,7 +120,7 @@ void loop() {
       Serial.print("Satellites = "); 
       Serial.println(satellites); 
       Serial.println("----------------------------");
-
     }
+    delay(3000);
   }
 }

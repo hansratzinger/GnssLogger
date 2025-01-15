@@ -202,7 +202,7 @@ void testFileIO(fs::FS &fs, const char *path) {
 
 String generateFileName(TinyGPSPlus &gps) {
   char fileName[32];
-  snprintf(fileName, sizeof(fileName), "/log_%04d_%02d_%02d.txt", gps.date.year(), gps.date.month(), gps.date.day());
+  snprintf(fileName, sizeof(fileName), "/log_%04d_%02d_%02d.csv", gps.date.year(), gps.date.month(), gps.date.day());
   return String(fileName);
 }
 
@@ -214,4 +214,28 @@ String getDirectionLat(double latitude) {
 String getDirectionLng(double longitude) {
   String lonDir = (longitude >= 0) ? "E" : "W";
   return lonDir;
+}
+
+String convertToDMM(double decimalDegrees) {
+  int degrees = (int)decimalDegrees;
+  double minutes = (decimalDegrees - degrees) * 60;
+  char buffer[20];
+  snprintf(buffer, sizeof(buffer), "%d°%.6f'", degrees, minutes);
+  return String(buffer);
+}
+
+void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus &gps) {
+  File file = fs.open(path, FILE_APPEND);
+  if (!file) {
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+  String creationDate = "Creation Date: " + String(gps.date.year()) + "/" + String(gps.date.month()) + "/" + String(gps.date.day()) + " " + String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()) + "\n";
+  String modificationDate = "Modification Date: " + String(gps.date.year()) + "/" + String(gps.date.month()) + "/" + String(gps.date.day()) + " " + String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()) + "\n";
+  if (file.print(creationDate) && file.print(modificationDate)) {
+    Serial.println("Creation and modification dates written");
+  } else {
+    Serial.println("Failed to write dates");
+  }
+  file.close();
 }
