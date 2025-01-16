@@ -79,8 +79,8 @@ void loop() {
       satellites = String(gps.satellites.value());
       speed = String(gps.speed.knots());
       altitude = String(gps.altitude.meters());
-      firstline = "Date,UTC,Lat,N/S,Lon,E/W,knots,Alt/m,HDOP,Satellites,Fix-distance/m,LatDiff,LonDiff\n";
-      logging = date + "," + gpstime + "," + lat + "," + directionLat + "," + lon + "," +  directionLng + "," + speed + "," + altitude + "," + hdop + "," + satellites;
+      firstline = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff\n";
+      logging = date + ";" + gpstime + ";" + lat + ";" + directionLat + ";" + lon + ";" +  directionLng + ";" + speed + ";" + altitude + ";" + hdop + ";" + satellites;
 
       // Berechne die Entfernung zum letzten Punkt
       if (latLast != "" && lonLast != "") {
@@ -91,6 +91,11 @@ void loop() {
       logging += "," + String(latDifference,6) + "," + String(lonDifference,6);
       }
       logging += "\n";
+
+      
+    // Ersetze Punkte durch Kommas in den Zahlen
+    logging.replace('.', ',');
+
 
       if (date != "2000/0/0") {
       // SD card    
