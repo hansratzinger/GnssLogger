@@ -42,19 +42,43 @@
 #include "SD.h"
 #include "SPI.h"
 #include <TinyGPS++.h>
-
+#include <EEPROM.h>
 #include "SD_card.h"
+
+
+RTC_DATA_ATTR String gpstimeLastRTC;
+RTC_DATA_ATTR String dateLastRTC;
+RTC_DATA_ATTR String latLastRTC;
+RTC_DATA_ATTR String lonLastRTC;
+RTC_DATA_ATTR bool isMissionModeRTC;
+
+void saveToRTC(const String &gpstimeLast, const String &dateLast, const String &latLast, const String &lonLast, bool isMissionMode) {
+  gpstimeLastRTC = gpstimeLast;
+  dateLastRTC = dateLast;
+  latLastRTC = latLast;
+  lonLastRTC = lonLast;
+  isMissionModeRTC = isMissionMode;
+}
+
+void loadFromRTC(String &gpstimeLast, String &dateLast, String &latLast, String &lonLast, bool &isMissionMode) {
+  gpstimeLast = gpstimeLastRTC;
+  dateLast = dateLastRTC;
+  latLast = latLastRTC;
+  lonLast = lonLastRTC;
+  isMissionMode = isMissionModeRTC;
+}
+
 
 void appendFile(fs::FS &fs, const char *path, const char *message) {
   File file = fs.open(path, FILE_APPEND);
   if (!file) {
-    Serial.println("Failed to open file for appending");
+    // Serial.println("Failed to open file for appending");
     return;
   }
   if (file.print(message)) {
-    Serial.println("Message appended");
+    // Serial.println("Message appended");
   } else {
-    Serial.println("Append failed");
+    // Serial.println("Append failed");
   }
   file.close(); // Stellen Sie sicher, dass die Datei geschlossen wird
 }
@@ -257,4 +281,8 @@ double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
 
 double calculateDifference(double firstData,  double secoundData) {
   return firstData - secoundData;
+}
+
+bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double radius) {
+  return calculateDistance(lat1, lon1, lat2, lon2) <= radius;
 }

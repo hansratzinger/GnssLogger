@@ -1,7 +1,18 @@
+/*********
+ *   Rui Santos & Sara Santos - Random Nerd Tutorials
+  Complete instructions at https://RandomNerdTutorials.com/esp32-neo-6m-gps-module-arduino/
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
+  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+*********/
+
 // GnssLogger
 // HR 2025-01-15 NK
 #include <TinyGPS++.h>
 #include "SD_card.h"
+#include <EEPROM.h>
+#include <esp_sleep.h>
+#include <SD.h> // Einbinden der SD-Bibliothek
+#include <SPI.h> // Einbinden der SPI-Bibliothek
 
 // Define the RX and TX pins for Serial 2
 #define RXD2 16
@@ -12,7 +23,11 @@ unsigned long start = millis();
 String gpstime, date, lat, lon, speed, altitude ,hdop, satellites, logging, firstline;
 String gpstimeLast, dateLast, latLast, lonLast, speedLast, altitudeLast ,hdopLast, satellitesLast, loggingLast, firstlineLast;  
 double distanceLast, latDifference, lonDifference;
-
+bool isMissionMode = false;
+unsigned long lastSwitchTime = 0;
+const unsigned long switchInterval = 300000; // 5 Minuten in Millisekunden
+const double circleAroundPosition = 5.0; // Radius in Metern
+const unsigned long sleepingTime = 4000; // = 4 sec
 // The TinyGPS++ object
 TinyGPSPlus gps;
 
@@ -56,93 +71,115 @@ void setup() {
   Serial.println("SD Card Size: " + String(cardSize) + "MB");
 
   listDir(SD, "/", 0);
+
+  // Load data from RTC memory
+  loadFromRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionMode);
 }
 
 void loop() {
   // This sketch displays information every time a new sentence is correctly encoded.
   while (gpsSerial.available() > 0) {
-      gps.encode(gpsSerial.read());
-    }
-    if (gps.location.isUpdated()) {
-      lat = String(gps.location.lat(), 6);      
-      lon = String(gps.location.lng(), 6);
+    gps.encode(gpsSerial.read());
+  }
+  if (gps.location.isUpdated()) {
+    lat = String(gps.location.lat(), 6);      
+    lon = String(gps.location.lng(), 6);
 
-      // Bestimme die Himmelsrichtung
-      String directionLat = getDirectionLat(gps.location.lat());
-      String directionLng = getDirectionLng(gps.location.lng());
+    // Bestimme die Himmelsrichtung
+    String directionLat = getDirectionLat(gps.location.lat());
+    String directionLng = getDirectionLng(gps.location.lng());
 
-      char timeBuffer[10];
-      sprintf(timeBuffer, "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
-      gpstime = String(timeBuffer);
-      date = String(gps.date.year()) + "/" + String(gps.date.month()) + "/" + String(gps.date.day());
-      hdop = String(gps.hdop.hdop());
-      satellites = String(gps.satellites.value());
-      speed = String(gps.speed.knots());
-      altitude = String(gps.altitude.meters());
-      firstline = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff\n";
-      logging = date + ";" + gpstime + ";" + lat + ";" + directionLat + ";" + lon + ";" +  directionLng + ";" + speed + ";" + altitude + ";" + hdop + ";" + satellites;
+    char timeBuffer[10];
+    sprintf(timeBuffer, "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
+    gpstime = String(timeBuffer);
+    date = String(gps.date.year()) + "/" + String(gps.date.month()) + "/" + String(gps.date.day());
+    hdop = String(gps.hdop.hdop());
+    satellites = String(gps.satellites.value());
+    speed = String(gps.speed.knots());
+    altitude = String(gps.altitude.meters());
+    firstline = "Date,UTC,Lat,N/S,Lon,E/W,knots,Alt/m,HDOP,Satellites,Fix-distance/m,LatDiff,LonDiff\n";
+    logging = date + "," + gpstime + "," + lat + "," + directionLat + "," + lon + "," +  directionLng + "," + speed + "," + altitude + "," + hdop + "," + satellites;
 
-      // Berechne die Entfernung zum letzten Punkt
-      if (latLast != "" && lonLast != "") {
+    // Berechne die Entfernung zum letzten Punkt
+    if (latLast != "" && lonLast != "") {
       distanceLast = calculateDistance(lat.toDouble(), lon.toDouble(), latLast.toDouble(), lonLast.toDouble());
-      logging += ";" + String(distanceLast);
+      logging += "," + String(distanceLast);
       latDifference = calculateDifference(lat.toDouble(), latLast.toDouble());
       lonDifference = calculateDifference(lon.toDouble(), lonLast.toDouble());  
-      logging += ";" + String(latDifference,6) + ";" + String(lonDifference,6);
-      }
-      logging += "\n";
+      logging += "," + String(latDifference, 6) + "," + String(lonDifference, 6);
+    }
+    logging += "\n";
 
-      
     // Ersetze Punkte durch Kommas in den Zahlen
     logging.replace('.', ',');
 
-
+    // Wechsel zwischen Station- und Mission-Modus
+    if (isMissionMode) {
+      // Schreibe nur im Mission-Modus auf die SD-Karte
       if (date != "2000/0/0") {
-      // SD card    
-      // Generiere den Dateinamen basierend auf dem aktuellen Datum
-      String fileName = generateFileName(gps);
+        // SD card    
+        // Generiere den Dateinamen basierend auf dem aktuellen Datum
+        String fileName = generateFileName(gps);
 
-      // Überprüfe, ob die Datei bereits existiert
-      if (!SD.exists(fileName.c_str())) {
-        // Datei existiert nicht, erstelle die Datei und schreibe die erste Zeile
-        writeFile(SD, fileName.c_str(), firstline.c_str());
+        // Überprüfe, ob die Datei bereits existiert
+        if (!SD.exists(fileName.c_str())) {
+          // Datei existiert nicht, erstelle die Datei und schreibe die erste Zeile
+          writeFile(SD, fileName.c_str(), firstline.c_str());
+        }
+     
+        // Schreibe die Daten in die Datei
+        appendFile(SD, fileName.c_str(), logging.c_str());
+
+        // Serial monitor          
+        Serial.print("Date: ");
+        Serial.println(date);
+        Serial.print("Time: ");
+        Serial.println(gpstime);
+        Serial.print("LAT: ");
+        Serial.print(lat);
+        Serial.println(" " + directionLat);
+        Serial.print("LON: "); 
+        Serial.print(lon);
+        Serial.println(" " + directionLng);
+        Serial.print("SPEED (knots) = "); 
+        Serial.println(speed); 
+        Serial.print("Alt = "); 
+        Serial.println(altitude); 
+        Serial.print("HDOP = "); 
+        Serial.println(hdop); 
+        Serial.print("Satellites = "); 
+        Serial.println(satellites); 
+        Serial.print("Distance (m) = ");
+        Serial.println(distanceLast);
+        Serial.println("----------------------------");
+
+        // Save the last values
+        gpstimeLast = gpstime;
+        dateLast = date;
+        latLast = lat;
+        lonLast = lon;
       }
-   
-      // Schreibe die Daten in die Datei
-      appendFile(SD, fileName.c_str(), logging.c_str());
 
-      // Serial monitor          
-      Serial.print("Date: ");
-      Serial.println(date);
-      Serial.print("Time: ");
-      Serial.println(gpstime);
-      Serial.print("LAT: ");
-      Serial.print(lat);
-      Serial.println(" " + directionLat);
-      Serial.print("LON: "); 
-      Serial.print(lon);
-      Serial.println(" " + directionLng);
-      Serial.print("SPEED (knots) = "); 
-      Serial.println(speed); 
-      Serial.print("Alt = "); 
-      Serial.println(altitude); 
-      Serial.print("HDOP = "); 
-      Serial.println(hdop); 
-      Serial.print("Satellites = "); 
-      Serial.println(satellites); 
-      
-      Serial.print("Distance (m) = ");
-      Serial.println(distanceLast);
-      Serial.println("----------------------------");
-
-      // Save the last values
-      gpstimeLast = gpstime;
-      dateLast = date;
-      latLast = lat;
-      lonLast = lon;
-
-      delay(1000);
+      if (millis() - lastSwitchTime >= switchInterval) {
+        if (isWithinRange(lat.toDouble(), lon.toDouble(), latLast.toDouble(), lonLast.toDouble(), circleAroundPosition)) {
+          isMissionMode = false;
+          lastSwitchTime = millis();
+          Serial.println("Switched to Station Mode");
+        }
       }
-    delay(3000);
+    } else {
+      if (!isWithinRange(lat.toDouble(), lon.toDouble(), latLast.toDouble(), lonLast.toDouble(), circleAroundPosition)) {
+        isMissionMode = true;
+        lastSwitchTime = millis();
+        Serial.println("Switched to Mission Mode");
+      }
+    }
+
+    // Speichern der Daten im RTC-Speicher
+    saveToRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionMode);
+
+    // Aktivieren des Deep-Sleep-Modus für 4 Sekunden
+    esp_sleep_enable_timer_wakeup(4000000); // 4 Sekunden in Mikrosekunden
+    esp_deep_sleep_start();
   }
 }
