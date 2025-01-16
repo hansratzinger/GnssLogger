@@ -85,10 +85,10 @@ void loop() {
       // Berechne die Entfernung zum letzten Punkt
       if (latLast != "" && lonLast != "") {
       distanceLast = calculateDistance(lat.toDouble(), lon.toDouble(), latLast.toDouble(), lonLast.toDouble());
-      logging += "," + String(distanceLast);
+      logging += ";" + String(distanceLast);
       latDifference = calculateDifference(lat.toDouble(), latLast.toDouble());
       lonDifference = calculateDifference(lon.toDouble(), lonLast.toDouble());  
-      logging += "," + String(latDifference,6) + "," + String(lonDifference,6);
+      logging += ";" + String(latDifference,6) + ";" + String(lonDifference,6);
       }
       logging += "\n";
 
