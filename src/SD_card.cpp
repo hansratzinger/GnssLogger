@@ -52,7 +52,7 @@ RTC_DATA_ATTR String latLastRTC;
 RTC_DATA_ATTR String lonLastRTC;
 RTC_DATA_ATTR bool isMissionModeRTC;
 
-void saveToRTC(const String &gpstimeLast, const String &dateLast, const String &latLast, const String &lonLast, bool isMissionMode) {
+void saveToRTC(const String &gpstimeLast, const String &dateLast, const String &latLast, const String &lonLast, bool isMissionMode, bool isWakedUp) {
   gpstimeLastRTC = gpstimeLast;
   dateLastRTC = dateLast;
   latLastRTC = latLast;

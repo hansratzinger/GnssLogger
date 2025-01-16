@@ -21,7 +21,7 @@ void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus 
 double calculateDistance(double lat1, double lon1, double lat2, double lon2);
 double calculateDifference(double firstData, double secondData);
 bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double radius);
-void saveToRTC(const String &gpstimeLast, const String &dateLast, const String &latLast, const String &lonLast, bool isMissionMode);
+void saveToRTC(const String &gpstimeLast, const String &dateLast, const String &latLast, const String &lonLast, bool isMissionMode, bool isWakedUp);
 void loadFromRTC(String &gpstimeLast, String &dateLast, String &latLast, String &lonLast, bool &isMissionMode);
 
 #endif // SD_CARD_H

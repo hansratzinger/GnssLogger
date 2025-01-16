@@ -2,6 +2,7 @@
 // HR 2025-01-15 NK
 #include <TinyGPS++.h>
 #include "SD_card.h"
+#include "GNSS_module.h"
 #include <EEPROM.h>
 #include <esp_sleep.h>
 #include <SD.h> // Einbinden der SD-Bibliothek
@@ -18,6 +19,7 @@ String gpstime, date, lat, lon, speed, altitude ,hdop, satellites, logging, firs
 String gpstimeLast, dateLast, latLast, lonLast, speedLast, altitudeLast ,hdopLast, satellitesLast, loggingLast, firstlineLast;  
 double distanceLast, latDifference, lonDifference;
 bool isMissionMode = true;
+bool isWakedUp = false;
 unsigned long lastSwitchTime = start;
 const unsigned long switchInterval = 300000; // 5 Minuten in Millisekunden
 const double circleAroundPosition = 5.0; // Radius in Metern
@@ -94,17 +96,19 @@ void loop() {
     satellites = String(gps.satellites.value());
     speed = String(gps.speed.knots());
     altitude = String(gps.altitude.meters());
-    firstline = "Date,UTC,Lat,N/S,Lon,E/W,knots,Alt/m,HDOP,Satellites,Fix-distance/m,LatDiff,LonDiff\n";
-    logging = date + "," + gpstime + "," + lat + "," + directionLat + "," + lon + "," +  directionLng + "," + speed + "," + altitude + "," + hdop + "," + satellites;
+    firstline = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff;WakeUp\n";
+    logging = date + ";" + gpstime + ";" + lat + ";" + directionLat + ";" + lon + ";" +  directionLng + ";" + speed + ";" + altitude + ";" + hdop + ";" + satellites;
 
     // Berechne die Entfernung zum letzten Punkt
     if (latLast != "" && lonLast != "") {
-      distanceLast = calculateDistance(lat.toDouble(), lon.toDouble(), latLast.toDouble(), lonLast.toDouble());
-      logging += "," + String(distanceLast);
+      distanceLast = calculateDistance(lat.toDouble(),lon.toDouble(), latLast.toDouble(), lonLast.toDouble());
+      logging += "; " + String(distanceLast);
       latDifference = calculateDifference(lat.toDouble(), latLast.toDouble());
       lonDifference = calculateDifference(lon.toDouble(), lonLast.toDouble());  
-      logging += "," + String(latDifference, 6) + "," + String(lonDifference, 6);
+      logging += ";" + String(latDifference, 6) + ";" + String(lonDifference, 6);
     }
+
+    logging += ";" + String(isWakedUp);
     logging += "\n";
 
     // Ersetze Punkte durch Kommas in den Zahlen
@@ -193,7 +197,7 @@ void loop() {
     }
 
     // Speichern der Daten im RTC-Speicher
-    saveToRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionMode);
+    saveToRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionMode, isWakedUp=false);
 
     // Aktivieren des Deep-Sleep-Modus für 4 Sekunden
     esp_sleep_enable_timer_wakeup(4000000); // 4 Sekunden in Mikrosekunden
