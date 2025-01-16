@@ -20,4 +20,5 @@ In beiden Modi wird das System nach einer gewissen Zeit in den deep-sleep geschi
 - Die Positionen sollen in einer geeigneten Datenstruktur gespeichert werden.  
 - Die Daten sollen auf der SD-Card in einem .csv-File gespeichert werden.  
 - Der Bereich wird durch einen Kreis mit Radius 5m um die jeweilige Position definiert.
+- Das System startet in Mission-Mode
 

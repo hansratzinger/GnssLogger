@@ -1,10 +1,3 @@
-/*********
- *   Rui Santos & Sara Santos - Random Nerd Tutorials
-  Complete instructions at https://RandomNerdTutorials.com/esp32-neo-6m-gps-module-arduino/
-  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
-  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*********/
-
 // GnssLogger
 // HR 2025-01-15 NK
 #include <TinyGPS++.h>
@@ -13,6 +6,7 @@
 #include <esp_sleep.h>
 #include <SD.h> // Einbinden der SD-Bibliothek
 #include <SPI.h> // Einbinden der SPI-Bibliothek
+#include <deque>
 
 // Define the RX and TX pins for Serial 2
 #define RXD2 16
@@ -23,8 +17,8 @@ unsigned long start = millis();
 String gpstime, date, lat, lon, speed, altitude ,hdop, satellites, logging, firstline;
 String gpstimeLast, dateLast, latLast, lonLast, speedLast, altitudeLast ,hdopLast, satellitesLast, loggingLast, firstlineLast;  
 double distanceLast, latDifference, lonDifference;
-bool isMissionMode = false;
-unsigned long lastSwitchTime = 0;
+bool isMissionMode = true;
+unsigned long lastSwitchTime = start;
 const unsigned long switchInterval = 300000; // 5 Minuten in Millisekunden
 const double circleAroundPosition = 5.0; // Radius in Metern
 const unsigned long sleepingTime = 4000; // = 4 sec
@@ -33,6 +27,9 @@ TinyGPSPlus gps;
 
 // Create an instance of the HardwareSerial class for Serial 2
 HardwareSerial gpsSerial(2);
+
+// Deque zum Speichern der letzten 5 Positionen
+std::deque<std::pair<double, double>> lastPositions;
 
 void setup() {
   // Serial Monitor
@@ -161,18 +158,38 @@ void loop() {
       }
 
       if (millis() - lastSwitchTime >= switchInterval) {
-        if (isWithinRange(lat.toDouble(), lon.toDouble(), latLast.toDouble(), lonLast.toDouble(), circleAroundPosition)) {
+        bool withinRange = false;
+        for (const auto& pos : lastPositions) {
+          if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
+            withinRange = true;
+            break;
+          }
+        }
+        if (withinRange) {
           isMissionMode = false;
           lastSwitchTime = millis();
           Serial.println("Switched to Station Mode");
         }
       }
     } else {
-      if (!isWithinRange(lat.toDouble(), lon.toDouble(), latLast.toDouble(), lonLast.toDouble(), circleAroundPosition)) {
+      bool withinRange = false;
+      for (const auto& pos : lastPositions) {
+        if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
+          withinRange = true;
+          break;
+        }
+      }
+      if (!withinRange) {
         isMissionMode = true;
         lastSwitchTime = millis();
         Serial.println("Switched to Mission Mode");
       }
+    }
+
+    // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
+    lastPositions.push_back({lat.toDouble(), lon.toDouble()});
+    if (lastPositions.size() > 5) {
+      lastPositions.pop_front();
     }
 
     // Speichern der Daten im RTC-Speicher
