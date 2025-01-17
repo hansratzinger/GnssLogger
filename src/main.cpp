@@ -27,9 +27,9 @@ double distanceLast, latDifference, lonDifference;
 bool isMissionMode = true;
 bool isWakedUp = false;
 unsigned long lastSwitchTime = start;
-const unsigned long switchInterval = 300000; // 5 Minuten in Millisekunden
+const unsigned long switchInterval =  300000; // 5 Minuten in Millisekunden
 const double circleAroundPosition = 5.0; // Radius in Metern
-const unsigned long sleepingTime = 4000; // = 4 sec
+const unsigned long sleepingTime = 2000; // 2 Sekunden in Millisekunden
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -42,7 +42,7 @@ std::deque<std::pair<double, double>> lastPositions;
 
 // Funktion zur Aktivierung des Light-Sleep-Modus
 void enableLightSleep() {
-  esp_sleep_enable_uart_wakeup(ESP_SLEEP_WAKEUP_UART); // Aufwachen durch UART
+  esp_sleep_enable_timer_wakeup(sleepingTime * 1000); // 2 Sekunden in Mikrosekunden
   esp_light_sleep_start();
   debugPrintln("Light-Sleep-Modus aktiviert");
 }
