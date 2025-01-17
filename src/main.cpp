@@ -16,8 +16,8 @@
 #include "GNSS_module.h" // Einbinden der GNSS-Modul-Header-Datei
 
 // Define the RX and TX pins for Serial 2
-#define RXD2 1
-#define TXD2 3
+#define RXD2 16
+#define TXD2 17
 #define GPS_BAUD 115200
 
 unsigned long start = millis();
@@ -44,14 +44,14 @@ std::deque<std::pair<double, double>> lastPositions;
 void enableLightSleep() {
   esp_sleep_enable_uart_wakeup(ESP_SLEEP_WAKEUP_UART); // Aufwachen durch UART
   esp_light_sleep_start();
-  Serial.println("Light-Sleep-Modus aktiviert");
+  debugPrintln("Light-Sleep-Modus aktiviert");
 }
 
 // Funktion zur Aktivierung des Deep-Sleep-Modus
 void enableDeepSleep() {
   esp_sleep_enable_timer_wakeup(sleepingTime * 1000); // 4 Sekunden in Mikrosekunden
   esp_deep_sleep_start();
-  Serial.println("Deep-Sleep-Modus aktiviert");
+  debugPrintln("Deep-Sleep-Modus aktiviert");
 }
 
 void setup() {
@@ -60,35 +60,35 @@ void setup() {
   
   // Start Serial 2 with the defined RX and TX pins and a baud rate of 9600
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2);
-  Serial.println("Serial 2 started at 9600 baud rate");
+  debugPrintln("Serial 2 started at 9600 baud rate");
 
   if (!SD.begin()) {
-    Serial.println("Card Mount Failed");
+    debugPrintln("Card Mount Failed");
     return;
   }
   uint8_t cardType = SD.cardType();
 
   if (cardType == CARD_NONE) {
-    Serial.println("No SD card attached");
+    debugPrintln("No SD card attached");
     return;
   }
 
-  Serial.print("SD Card Type: ");
+  debugPrint("SD Card Type: ");
   if (cardType == CARD_MMC) {
-    Serial.println("MMC");
+    debugPrintln("MMC");
   } else if (cardType == CARD_SD) {
-    Serial.println("SDSC");
+    debugPrintln("SDSC");
   } else if (cardType == CARD_SDHC) {
-    Serial.println("SDHC");
+    debugPrintln("SDHC");
   } else if (cardType == CARD_UNKNOWN) {
-    Serial.println("UNKNOWN CARD");
+    debugPrintln("UNKNOWN CARD");
   } else if (cardType == CARD_NONE) {
-    Serial.println("No SD card attached");
+    debugPrintln("No SD card attached");
     return;
   }
   
   uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-  Serial.println("SD Card Size: " + String(cardSize) + "MB");
+  debugPrintln("SD Card Size: " + String(cardSize) + "MB");
 
   listDir(SD, "/", 0);
 
@@ -154,27 +154,27 @@ void loop() {
         appendFile(SD, fileName.c_str(), logging.c_str());
 
         // Serial monitor          
-        Serial.print("Date: ");
-        Serial.println(date);
-        Serial.print("Time: ");
-        Serial.println(gpstime);
-        Serial.print("LAT: ");
-        Serial.print(lat);
-        Serial.println(" " + directionLat);
-        Serial.print("LON: "); 
-        Serial.print(lon);
-        Serial.println(" " + directionLng);
-        Serial.print("SPEED (knots) = "); 
-        Serial.println(speed); 
-        Serial.print("Alt = "); 
-        Serial.println(altitude); 
-        Serial.print("HDOP = "); 
-        Serial.println(hdop); 
-        Serial.print("Satellites = "); 
-        Serial.println(satellites); 
-        Serial.print("Distance (m) = ");
-        Serial.println(distanceLast);
-        Serial.println("----------------------------");
+        debugPrint("Date: ");
+        debugPrintln(date);
+        debugPrint("Time: ");
+        debugPrintln(gpstime);
+        debugPrint("LAT: ");
+        debugPrint(lat);
+        debugPrintln(" " + directionLat);
+        debugPrint("LON: "); 
+        debugPrint(lon);
+        debugPrintln(" " + directionLng);
+        debugPrint("SPEED (knots) = "); 
+        debugPrintln(speed); 
+        debugPrint("Alt = "); 
+        debugPrintln(altitude); 
+        debugPrint("HDOP = "); 
+        debugPrintln(hdop); 
+        debugPrint("Satellites = "); 
+        debugPrintln(satellites); 
+        debugPrint("Distance (m) = ");
+        debugPrintln(String(distanceLast)); // Konvertieren von double zu String
+        debugPrintln("----------------------------");
 
         // Save the last values
         gpstimeLast = gpstime;
@@ -194,7 +194,7 @@ void loop() {
         if (withinRange) {
           isMissionModeRTC = false;
           lastSwitchTime = millis();
-          Serial.println("Switched to Station Mode");
+          debugPrintln("Switched to Station Mode");
         }
       }
 
@@ -211,7 +211,7 @@ void loop() {
       if (!withinRange) {
         isMissionModeRTC = true;
         lastSwitchTime = millis();
-        Serial.println("Switched to Mission Mode");
+        debugPrintln("Switched to Mission Mode");
         enableALPMode(); // ALP-Modus aktivieren
       }
 

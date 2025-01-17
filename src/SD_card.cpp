@@ -38,12 +38,33 @@
  * https://github.com/espressif/arduino-esp32/tree/master/libraries/SD
  */
 
-#include "FS.h"
 #include "SD.h"
 #include "SPI.h"
-#include <EEPROM.h>
 #include "SD_card.h"
 #include <TinyGPS++.h>
+
+// Funktion zum Schreiben in die Datei debug.txt
+void writeDebug(const String &message) {
+  File file = SD.open("/debug.txt", FILE_APPEND);
+  if (file) {
+    file.println(message);
+    file.close();
+  } else {
+    Serial.println("Fehler beim Öffnen der Datei debug.txt");
+  }
+}
+
+// Wrapper-Funktion für Serial.print
+void debugPrint(const String &message) {
+  Serial.print(message);
+  writeDebug(message);
+}
+
+// Wrapper-Funktion für Serial.println
+void debugPrintln(const String &message) {
+  Serial.println(message);
+  writeDebug(message + "\n");
+}
 
 void appendFile(fs::FS &fs, const char *path, const char *message) {
   File file = fs.open(path, FILE_APPEND);
@@ -58,7 +79,6 @@ void appendFile(fs::FS &fs, const char *path, const char *message) {
   }
   file.close(); // Stellen Sie sicher, dass die Datei geschlossen wird
 }
-
 
 void listDir(fs::FS &fs, const char *dirname, uint8_t levels) {
   Serial.printf("Listing directory: %s\n", dirname);
