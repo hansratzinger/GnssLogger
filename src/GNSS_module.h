@@ -29,4 +29,8 @@ void enableALPMode();
 void disableALPMode();
 void enableModemSleep();
 
+// Wrapper-Funktion für Serial.print
+void debugPrint(const String &message);
+void debugPrintln(const String &message);
+
 #endif // GNSS_MODULE_H

@@ -63,8 +63,12 @@ double calculateDifference(double firstData,  double secoundData) {
   return firstData - secoundData;
 }
 
+// Funktion zur Überprüfung, ob eine Position innerhalb eines bestimmten Radius liegt
 bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double radius) {
-  return calculateDistance(lat1, lon1, lat2, lon2) <= radius;
+  double distance = calculateDistance(lat1, lon1, lat2, lon2);
+  return distance <= radius;
+  debugPrintln("distance to last position:" + String(distance));
+  
 }
 
 // Funktion zur Aktivierung des Modem-Sleep-Modus

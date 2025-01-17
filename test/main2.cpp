@@ -1,9 +1,6 @@
-/*********
- *   Rui Santos & Sara Santos - Random Nerd Tutorials
-  Complete instructions at https://RandomNerdTutorials.com/esp32-neo-6m-gps-module-arduino/
-  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
-  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*********/
+// main2.cpp
+// HR 2025-01-17 23:35 NK
+
 
 #include <TinyGPS++.h>
 #include "SD_card.h"
@@ -43,7 +40,7 @@ std::deque<std::pair<double, double>> lastPositions;
 // Funktion zur Aktivierung des Light-Sleep-Modus
 void enableLightSleep() {
   debugPrintln("Light-Sleep-Modus aktiviert");
-  delay(100); // Warte 100 Millisekunden
+  delay(250); // Warte 100 Millisekunden
   esp_sleep_enable_timer_wakeup(sleepingTime * 1000); // 2 Sekunden in Mikrosekunden
   esp_light_sleep_start();
 }
@@ -51,7 +48,7 @@ void enableLightSleep() {
 // Funktion zur Aktivierung des Deep-Sleep-Modus
 void enableDeepSleep() {
   debugPrintln("Deep-Sleep-Modus aktiviert");
-  delay(100); // Warte 100 Millisekunden
+  delay(250); // Warte 100 Millisekunden
   esp_sleep_enable_timer_wakeup(sleepingTime * 1000); // 4 Sekunden in Mikrosekunden
   esp_deep_sleep_start();
 }
@@ -137,8 +134,64 @@ void loop() {
 
     // Ersetze Punkte durch Kommas in den Zahlen
     logging.replace('.', ',');
-//----------------------------------------------------------------------------------
-    // Wechsel zwischen Station- und Mission-Modus
+//--------------------------------------------------------------------------------------------------------------------------------
+//  if (millis() - lastSwitchTime >= switchInterval) {
+        bool withinRange = false;
+        for (const auto& pos : lastPositions) {
+          if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
+            withinRange = true;
+            break;
+        //   }
+        }
+        if (withinRange) {
+          isMissionMode = false;
+        //   lastSwitchTime = millis();
+          debugPrintln("Switched to Station Mode");
+          enableDeepSleep(); // Deep-Sleep-Modus aktivieren
+        } else {
+          isMissionMode = true;
+          lastSwitchTime = millis();
+          debugPrintln("Switched to Mission Mode");
+          enableALPMode(); // ALP-Modus aktivieren
+          enableLightSleep(); // Aktivieren des Light-Sleep-Modus im Mission-Modus
+        }
+      }
+
+       // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu  
+    } else {
+      bool withinRange = false;
+      for (const auto& pos : lastPositions) {
+        if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
+          withinRange = true;
+          break;
+        }
+      }
+      if (!withinRange) {
+        isMissionMode = true;
+        lastSwitchTime = millis();
+        debugPrintln("Switched to Mission Mode");
+        enableALPMode(); // ALP-Modus aktivieren
+              }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//--------------------------------------------------------
+   // Wechsel zwischen Station- und Mission-Modus
     if (isMissionMode) {
       // Schreibe nur im Mission-Modus auf die SD-Karte
       if (date != "2000/0/0") {
@@ -184,61 +237,3 @@ void loop() {
         latLast = lat;
         lonLast = lon;
       }
-//--------------------------------------------------------------------------
-      if (millis() - lastSwitchTime >= switchInterval) {
-        bool withinRange = false;
-        for (const auto& pos : lastPositions) {
-          if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
-            withinRange = true;
-            break;
-          }
-        }
-        if (withinRange) {
-          isMissionMode = false;
-          lastSwitchTime = millis();
-          debugPrintln("Switched to Station Mode");
-          enableDeepSleep(); // Deep-Sleep-Modus aktivieren
-        } else {
-          isMissionMode = true;
-          lastSwitchTime = millis();
-          debugPrintln("Switched to Mission Mode");
-          enableALPMode(); // ALP-Modus aktivieren
-          enableLightSleep(); // Aktivieren des Light-Sleep-Modus im Mission-Modus
-        }
-      }
-
-       // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu  
-    } else {
-      bool withinRange = false;
-      for (const auto& pos : lastPositions) {
-        if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
-          withinRange = true;
-          break;
-        }
-      }
-      if (!withinRange) {
-        isMissionMode = true;
-        lastSwitchTime = millis();
-        debugPrintln("Switched to Mission Mode");
-        enableALPMode(); // ALP-Modus aktivieren
-              }
-    }
-//----------------------------------------------------------------------------
-    // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
-    lastPositions.push_back({lat.toDouble(), lon.toDouble()});
-    if (lastPositions.size() > 5) {
-      lastPositions.pop_front();
-    }
-
-    // Speichern der Daten im RTC-Speicher
-    saveToRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionModeRTC, isWakedUpRTC=false);
-
-    if (isMissionMode) {
-        enableLightSleep(); // Aktivieren des Light-Sleep-Modus im Station-Modus
-    } else {
-        enableDeepSleep(); // Aktivieren des Deep-Sleep-Modus im Mission-Modus  
-    } 
-  }
-}
-
-
