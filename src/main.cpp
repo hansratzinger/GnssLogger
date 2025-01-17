@@ -42,16 +42,18 @@ std::deque<std::pair<double, double>> lastPositions;
 
 // Funktion zur Aktivierung des Light-Sleep-Modus
 void enableLightSleep() {
+  debugPrintln("Light-Sleep-Modus aktiviert");
+  delay(100); // Warte 100 Millisekunden
   esp_sleep_enable_timer_wakeup(sleepingTime * 1000); // 2 Sekunden in Mikrosekunden
   esp_light_sleep_start();
-  debugPrintln("Light-Sleep-Modus aktiviert");
 }
 
 // Funktion zur Aktivierung des Deep-Sleep-Modus
 void enableDeepSleep() {
+  debugPrintln("Deep-Sleep-Modus aktiviert");
+  delay(100); // Warte 100 Millisekunden
   esp_sleep_enable_timer_wakeup(sleepingTime * 1000); // 4 Sekunden in Mikrosekunden
   esp_deep_sleep_start();
-  debugPrintln("Deep-Sleep-Modus aktiviert");
 }
 
 void setup() {
@@ -120,16 +122,16 @@ void loop() {
     satellites = String(gps.satellites.value());
     speed = String(gps.speed.knots());
     altitude = String(gps.altitude.meters());
-    firstline = "Date,UTC,Lat,N/S,Lon,E/W,knots,Alt/m,HDOP,Satellites,Fix-distance/m,LatDiff,LonDiff\n";
-    logging = date + "," + gpstime + "," + lat + "," + directionLat + "," + lon + "," +  directionLng + "," + speed + "," + altitude + "," + hdop + "," + satellites;
+    firstline = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff\n";
+    logging = date + ";" + gpstime + ";" + lat + ";" + directionLat + ";" + lon + ";" +  directionLng + ";" + speed + ";" + altitude + ";" + hdop + ";" + satellites;
 
     // Berechne die Entfernung zum letzten Punkt
     if (latLast != "" && lonLast != "") {
       distanceLast = calculateDistance(lat.toDouble(), lon.toDouble(), latLast.toDouble(), lonLast.toDouble());
-      logging += "," + String(distanceLast);
+      logging += ";" + String(distanceLast);
       latDifference = calculateDifference(lat.toDouble(), latLast.toDouble());
       lonDifference = calculateDifference(lon.toDouble(), lonLast.toDouble());  
-      logging += "," + String(latDifference, 6) + "," + String(lonDifference, 6);
+      logging += ";" + String(latDifference, 6) + ";" + String(lonDifference, 6);
     }
     logging += "\n";
 
@@ -228,4 +230,10 @@ void loop() {
     // Speichern der Daten im RTC-Speicher
     saveToRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionModeRTC, isWakedUpRTC=false);
   }
+}
+
+// Funktion zur Überprüfung, ob eine Position innerhalb eines bestimmten Radius liegt
+bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double radius) {
+  double distance = calculateDistance(lat1, lon1, lat2, lon2);
+  return distance <= radius;
 }
