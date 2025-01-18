@@ -1,35 +1,38 @@
-/*********
- *   Rui Santos & Sara Santos - Random Nerd Tutorials
-  Complete instructions at https://RandomNerdTutorials.com/esp32-neo-6m-gps-module-arduino/
-  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
-  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*********/
-
-#include <TinyGPS++.h>
-#include "SD_card.h"
-#include <EEPROM.h>
 #include <esp_sleep.h>
 #include <SD.h> // Einbinden der SD-Bibliothek
 #include <SPI.h> // Einbinden der SPI-Bibliothek
 #include <deque>
 #include <WiFi.h> // Einbinden der WiFi-Bibliothek
 #include "GNSS_module.h" // Einbinden der GNSS-Modul-Header-Datei
+#include "SD_card.h" // Einbinden der SD-Karten-Header-Datei
+#include <esp_wifi.h>
 
 // Define the RX and TX pins for Serial 2
 #define RXD2 16
 #define TXD2 17
 #define GPS_BAUD 115200
 
+// Define the GPIO pins for the LEDs
+#define RED_LED_PIN 25 // station mode  // Definition des GPIO-Pins für die rote LED
+#define GREEN_LED_PIN 26 // mission mode // Definition des GPIO-Pins für die grüne LED
+
 unsigned long start = millis();
-String gpstime, date, lat, lon, speed, altitude ,hdop, satellites, logging, firstline;
-String gpstimeLast, dateLast, latLast, lonLast, speedLast, altitudeLast ,hdopLast, satellitesLast, loggingLast, firstlineLast;  
+String gpstime, date, lat, directionLat, lon, directionLon, speed, altitude, hdop, satellites, logging, firstline;
+String gpstimeLast, dateLast, latLast, lonLast, speedLast, altitudeLast, hdopLast, satellitesLast, loggingLast, firstlineLast;  
 double distanceLast, latDifference, lonDifference;
 bool isMissionMode = true;
 bool isWakedUp = false;
+
+const bool TEST = true; // Definition der Konstante TEST
+
 unsigned long lastSwitchTime = start;
-const unsigned long switchInterval =  300000; // 5 Minuten in Millisekunden
-const double circleAroundPosition = 5.0; // Radius in Metern
-const unsigned long sleepingTime = 2000; // 2 Sekunden in Millisekunden
+const unsigned long switchInterval = 300000; // 5 Minuten in Millisekunden
+const double circleAroundPosition = 1.0; // Radius in Metern
+const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
+const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
+const double hdopTreshold = 0.7; // HDOP-Schwellenwert
+const unsigned long timeToLastPositionTreshold = 15; // Zeitdifferenz-Schwellenwert in Sekunden
+const unsigned long delayTime = 500; // LED blink delay time
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -38,22 +41,80 @@ TinyGPSPlus gps;
 HardwareSerial gpsSerial(2); // Initialisierung von gpsSerial
 
 // Deque zum Speichern der letzten 5 Positionen
-std::deque<std::pair<double, double>> lastPositions;
+std::deque<std::pair<double, double>> stationPositions;
 
 // Funktion zur Aktivierung des Light-Sleep-Modus
 void enableLightSleep() {
-  debugPrintln("Light-Sleep-Modus aktiviert");
-  delay(100); // Warte 100 Millisekunden
-  esp_sleep_enable_timer_wakeup(sleepingTime * 1000); // 2 Sekunden in Mikrosekunden
-  esp_light_sleep_start();
+    if (isMissionMode) {
+        debugPrintln("Light-Sleep-Modus aktiviert");
+        delay(100); // Warte 100 Millisekunden
+        esp_sleep_enable_timer_wakeup(sleepingTimeLightSleep * 1000000); // 2 Sekunden in Mikrosekunden
+        esp_light_sleep_start();
+    }
 }
 
 // Funktion zur Aktivierung des Deep-Sleep-Modus
 void enableDeepSleep() {
-  debugPrintln("Deep-Sleep-Modus aktiviert");
-  delay(100); // Warte 100 Millisekunden
-  esp_sleep_enable_timer_wakeup(sleepingTime * 1000); // 4 Sekunden in Mikrosekunden
-  esp_deep_sleep_start();
+    if (!isMissionMode) {
+        debugPrintln("Deep-Sleep-Modus aktiviert");
+        delay(100); // Warte 100 Millisekunden
+        esp_sleep_enable_timer_wakeup(sleepingTimeDeepSleep * 1000000); // 5 Sekunden in Mikrosekunden
+        esp_deep_sleep_start();
+    }
+}
+
+// Funktion zur Aktivierung des Modem-Sleep-Modus
+void enableModemSleep() {
+  WiFi.mode(WIFI_OFF); // Deaktivieren des WiFi-Moduls
+  esp_wifi_set_ps(WIFI_PS_MIN_MODEM); // Aktivieren des Modem-Sleep-Modus
+  Serial.println("Modem-Sleep-Modus aktiviert");
+}
+
+// Funktion zur Aktivierung des ALP-Modus
+void enableALPMode() {
+  // Befehl zur Aktivierung des ALP-Modus
+  const char* enableALPCommand = "$PMTK225,8*23\r\n";
+  gpsSerial.print(enableALPCommand);
+  Serial.println("ALP-Modus aktiviert");
+}
+
+// Funktion zur Deaktivierung des ALP-Modus
+void disableALPMode() {
+  // Befehl zur Deaktivierung des ALP-Modus
+  const char* disableALPCommand = "$PMTK225,0*2B\r\n";
+  gpsSerial.print(disableALPCommand);
+  Serial.println("ALP-Modus deaktiviert");
+}
+
+// Funktion zur Berechnung der Zeitdifferenz zwischen gpstime und gpstimeLast
+unsigned long getTimeDifference(const String &gpstime, const String &gpstimeLast) {
+  int hour1, minute1, second1;
+  int hour2, minute2, second2;
+
+  sscanf(gpstime.c_str(), "%d:%d:%d", &hour1, &minute1, &second1);
+  sscanf(gpstimeLast.c_str(), "%d:%d:%d", &hour2, &minute2, &second2);
+
+  unsigned long time1 = hour1 * 3600 + minute1 * 60 + second1;
+  unsigned long time2 = hour2 * 3600 + minute2 * 60 + second2;
+
+  if (time1 >= time2) {
+    return time1 - time2;
+  } else {
+    return time2 - time1;
+  }
+}
+
+// Funktion zur Überprüfung, ob eine Position innerhalb eines bestimmten Radius liegt
+bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double radius) {
+  double distance = calculateDistance(lat1, lon1, lat2, lon2);
+  return distance <= radius;
+}
+
+void blinkLED(int pin, int delayTime) {
+  digitalWrite(pin, HIGH);
+  delay(delayTime);
+  digitalWrite(pin, LOW);
+  delay(delayTime);
 }
 
 void setup() {
@@ -99,14 +160,27 @@ void setup() {
 
   // Aktivieren des Modem-Sleep-Modus
   enableModemSleep();
+
+  // Initialisiere die LED-Pins
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
+
+  for (int i = 0; i < 5; i++) {
+    blinkLED(RED_LED_PIN, 500);
+    blinkLED(GREEN_LED_PIN, 500);
+  }
+
+  delay(1000);
 }
 
 void loop() {
-  // This sketch displays information every time a new sentence is correctly encoded.
+  // Read data from the GPS module
   while (gpsSerial.available() > 0) {
     gps.encode(gpsSerial.read());
   }
-  if (gps.location.isUpdated()) {
+  if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
     lat = String(gps.location.lat(), 6);      
     lon = String(gps.location.lng(), 6);
 
@@ -137,7 +211,46 @@ void loop() {
 
     // Ersetze Punkte durch Kommas in den Zahlen
     logging.replace('.', ',');
-//----------------------------------------------------------------------------------
+
+    // Berechne die Zeitdifferenz zwischen gpstime und gpstimeLast
+    unsigned long timeDifference = getTimeDifference(gpstime, gpstimeLast);
+    debugPrintln("Time difference: " + String(timeDifference) + " seconds");
+
+    if (timeDifference > timeToLastPositionTreshold) {
+      // Füge die aktuelle Position zur Liste 5 Station-Positionen hinzu
+      // neue Station-Positionen werden am Anfang der Liste hinzugefügt
+      stationPositions.clear();
+      stationPositions.push_back(std::make_pair(lat.toDouble(), lon.toDouble()));
+      while (stationPositions.size() < 5) {
+        // Warte auf die nächste gültige Position
+        while (gpsSerial.available() > 0) {
+          gps.encode(gpsSerial.read());
+        }
+        if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold)) {
+          double newLat = gps.location.lat();
+          double newLon = gps.location.lng();
+          if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
+            stationPositions.push_back(std::make_pair(newLat, newLon));
+          }
+        }
+      }
+      if (stationPositions.size() == 5) {
+        isMissionMode = false;
+        debugPrintln("Switched to Station Mode");
+        
+        // Schreibe die Station-Positionen auf die SD-Karte
+        for (const auto& pos : stationPositions) {
+          String stationLogging = date + ";" + gpstime + ";" + String(pos.first, 6) + ";" + directionLat + ";" + String(pos.second, 6) + ";" + directionLng + ";" + speed + ";" + altitude + ";" + hdop + ";" + satellites + ";station-mode\n";
+          String fileName = generateFileName(gps);
+          if (!SD.exists(fileName.c_str())) {
+          // Datei existiert nicht, erstelle die Datei und schreibe die erste Zeile
+          writeFile(SD, fileName.c_str(), firstline.c_str());
+        }
+          appendFile(SD, fileName.c_str(), stationLogging.c_str());
+        }
+      }
+    }
+
     // Wechsel zwischen Station- und Mission-Modus
     if (isMissionMode) {
       // Schreibe nur im Mission-Modus auf die SD-Karte
@@ -184,61 +297,55 @@ void loop() {
         latLast = lat;
         lonLast = lon;
       }
-//--------------------------------------------------------------------------
+
       if (millis() - lastSwitchTime >= switchInterval) {
         bool withinRange = false;
-        for (const auto& pos : lastPositions) {
+        for (const auto& pos : stationPositions) {
           if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
             withinRange = true;
             break;
           }
         }
         if (withinRange) {
-          isMissionMode = false;
+          isMissionModeRTC = false;
           lastSwitchTime = millis();
           debugPrintln("Switched to Station Mode");
-          enableDeepSleep(); // Deep-Sleep-Modus aktivieren
-        } else {
-          isMissionMode = true;
-          lastSwitchTime = millis();
-          debugPrintln("Switched to Mission Mode");
-          enableALPMode(); // ALP-Modus aktivieren
-          enableLightSleep(); // Aktivieren des Light-Sleep-Modus im Mission-Modus
         }
       }
 
-       // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu  
+      // Aktivieren des Light-Sleep-Modus im Mission-Modus
+      enableLightSleep();
     } else {
-      bool withinRange = false;
-      for (const auto& pos : lastPositions) {
-        if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
-          withinRange = true;
+      // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
+      bool outsideDoubleRadius = true;
+      for (const auto& pos : stationPositions) {
+        if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, 2 * circleAroundPosition)) {
+          outsideDoubleRadius = false;
           break;
         }
       }
-      if (!withinRange) {
+      if (outsideDoubleRadius) {
         isMissionMode = true;
-        lastSwitchTime = millis();
-        debugPrintln("Switched to Mission Mode");
-        enableALPMode(); // ALP-Modus aktivieren
-              }
+        stationPositions.clear();
+        debugPrintln("Switched to Mission Mode due to position outside double radius");
+      }
+
     }
-//----------------------------------------------------------------------------
+
     // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
-    lastPositions.push_back({lat.toDouble(), lon.toDouble()});
-    if (lastPositions.size() > 5) {
-      lastPositions.pop_front();
+    stationPositions.push_back({lat.toDouble(), lon.toDouble()});
+    if (stationPositions.size() > 5) {
+      stationPositions.pop_front();
     }
+   }
 
-    // Speichern der Daten im RTC-Speicher
-    saveToRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionModeRTC, isWakedUpRTC=false);
-
-    if (isMissionMode) {
-        enableLightSleep(); // Aktivieren des Light-Sleep-Modus im Station-Modus
+    if (!isMissionMode) {
+      // Speichern der Daten im RTC-Speicher
+      saveToRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionModeRTC, isWakedUpRTC=false);
+      enableDeepSleep();
     } else {
-        enableDeepSleep(); // Aktivieren des Deep-Sleep-Modus im Mission-Modus  
-    } 
-  }
+      // Speichern der Daten im RTC-Speicher
+      saveToRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionModeRTC=true, isWakedUpRTC=false);
+      enableLightSleep();
+    }
 }
-
-

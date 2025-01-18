@@ -4,6 +4,8 @@
 #include <TinyGPS++.h>
 #include <EEPROM.h>
 #include "GNSS_module.h"
+#include <WiFi.h>
+#include <esp_wifi.h>
 
 // Definition der RTC-Variablen
 RTC_DATA_ATTR bool isMissionModeRTC;
@@ -13,21 +15,7 @@ RTC_DATA_ATTR String dateLastRTC;
 RTC_DATA_ATTR String latLastRTC;
 RTC_DATA_ATTR String lonLastRTC;
 
-// Funktion zur Aktivierung des ALP-Modus
-void enableALPMode() {
-  // Befehl zur Aktivierung des ALP-Modus
-  const char* enableALPCommand = "$PMTK225,8*23\r\n";
-  gpsSerial.print(enableALPCommand);
-  Serial.println("ALP-Modus aktiviert");
-}
-
-// Funktion zur Deaktivierung des ALP-Modus
-void disableALPMode() {
-  // Befehl zur Deaktivierung des ALP-Modus
-  const char* disableALPCommand = "$PMTK225,0*2B\r\n";
-  gpsSerial.print(disableALPCommand);
-  Serial.println("ALP-Modus deaktiviert");
-}
+const bool TEST = true; // Definition der Konstante TEST
 
 void saveToRTC(const String &gpstimeLast, const String &dateLast, const String &latLast, const String &lonLast, bool isMissionMode, bool isWakedUp) {
   gpstimeLastRTC = gpstimeLast;
@@ -63,17 +51,4 @@ double calculateDifference(double firstData,  double secoundData) {
   return firstData - secoundData;
 }
 
-// Funktion zur Überprüfung, ob eine Position innerhalb eines bestimmten Radius liegt
-bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double radius) {
-  double distance = calculateDistance(lat1, lon1, lat2, lon2);
-  return distance <= radius;
-  debugPrintln("distance to last position:" + String(distance));
-  
-}
 
-// Funktion zur Aktivierung des Modem-Sleep-Modus
-void enableModemSleep() {
-  WiFi.mode(WIFI_OFF); // Deaktivieren des WiFi-Moduls
-  esp_wifi_set_ps(WIFI_PS_MIN_MODEM); // Aktivieren des Modem-Sleep-Modus
-  Serial.println("Modem-Sleep-Modus aktiviert");
-  }

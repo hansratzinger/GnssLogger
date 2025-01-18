@@ -1,5 +1,5 @@
-// main2.cpp
-// HR 2025-01-17 23:35 NK
+// main.cpp
+// HR 2025-01-18 13:28 NK
 
 
 #include <TinyGPS++.h>
@@ -17,16 +17,20 @@
 #define TXD2 17
 #define GPS_BAUD 115200
 
-unsigned long start = millis();
-String gpstime, date, lat, lon, speed, altitude ,hdop, satellites, logging, firstline;
+
+String gpstime, date, lat, directionLat,lon, directionLon,speed, altitude ,hdop, satellites, logging, firstline;
 String gpstimeLast, dateLast, latLast, lonLast, speedLast, altitudeLast ,hdopLast, satellitesLast, loggingLast, firstlineLast;  
 double distanceLast, latDifference, lonDifference;
 bool isMissionMode = true;
 bool isWakedUp = false;
-unsigned long lastSwitchTime = start;
-const unsigned long switchInterval =  300000; // 5 Minuten in Millisekunden
-const double circleAroundPosition = 5.0; // Radius in Metern
-const unsigned long sleepingTime = 2000; // 2 Sekunden in Millisekunden
+const bool TEST = true; // Definition der Debug-Konstante TEST
+
+const unsigned long deepSleepTime =  5; // Second 
+const unsigned long lightSleepTime = 2; // Second
+const double circleAroundPosition = 1.0; // Radius in meter
+const double hdopTreshold = 0.7; // only positons with hdop < 0.7 are valid
+const double timeToLastPositionTreshold = 15; // only positons with time difference < 15 seconds are valid
+
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -35,23 +39,7 @@ TinyGPSPlus gps;
 HardwareSerial gpsSerial(2); // Initialisierung von gpsSerial
 
 // Deque zum Speichern der letzten 5 Positionen
-std::deque<std::pair<double, double>> lastPositions;
-
-// Funktion zur Aktivierung des Light-Sleep-Modus
-void enableLightSleep() {
-  debugPrintln("Light-Sleep-Modus aktiviert");
-  delay(250); // Warte 100 Millisekunden
-  esp_sleep_enable_timer_wakeup(sleepingTime * 1000); // 2 Sekunden in Mikrosekunden
-  esp_light_sleep_start();
-}
-
-// Funktion zur Aktivierung des Deep-Sleep-Modus
-void enableDeepSleep() {
-  debugPrintln("Deep-Sleep-Modus aktiviert");
-  delay(250); // Warte 100 Millisekunden
-  esp_sleep_enable_timer_wakeup(sleepingTime * 1000); // 4 Sekunden in Mikrosekunden
-  esp_deep_sleep_start();
-}
+std::deque<std::pair<double, double>> stationPositions;
 
 void setup() {
   // Serial Monitor
@@ -59,7 +47,7 @@ void setup() {
   
   // Start Serial 2 with the defined RX and TX pins and a baud rate of 9600
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2);
-  debugPrintln("Serial 2 started at 9600 baud rate");
+  debugPrintln("Serial 2 started at" + String(GPS_BAUD) + " baud rate");
 
   if (!SD.begin()) {
     debugPrintln("Card Mount Failed");
@@ -93,17 +81,14 @@ void setup() {
 
   // Load data from RTC memory
   loadFromRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionMode);
-
-  // Aktivieren des Modem-Sleep-Modus
-  enableModemSleep();
 }
 
 void loop() {
-  // This sketch displays information every time a new sentence is correctly encoded.
+  // Read data from the GPS module
   while (gpsSerial.available() > 0) {
     gps.encode(gpsSerial.read());
   }
-  if (gps.location.isUpdated()) {
+  if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold)) {
     lat = String(gps.location.lat(), 6);      
     lon = String(gps.location.lng(), 6);
 
@@ -120,7 +105,26 @@ void loop() {
     speed = String(gps.speed.knots());
     altitude = String(gps.altitude.meters());
     firstline = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff\n";
-    logging = date + ";" + gpstime + ";" + lat + ";" + directionLat + ";" + lon + ";" +  directionLng + ";" + speed + ";" + altitude + ";" + hdop + ";" + satellites;
+    logging = date + ";" + gpstime + ";" + lat + ";" + directionLat + ";" + lon + ";" +  directionLon + ";" + speed + ";" + altitude + ";" + hdop + ";" + satellites;
+
+    // Berechne die Zeitdifferenz zwischen gpstime und gpstimeLast
+    unsigned long timeDifference = getTimeDifference(gpstime, gpstimeLast);
+    debugPrintln("Time difference: " + String(timeDifference) + " seconds");
+
+    if (timeToLastPositionTreshold <= timeDifference) {
+      // Füge die aktuelle Position zur Liste 5 Station-Positionen hinzu
+      // neue Station-Positionen werden am Anfang der Liste hinzugefügt
+      stationPositions.push_back(std::make_pair(lat.toDouble(), lon.toDouble()));
+      if (stationPositions.size() < 5) {
+        stationPositions.pop_front();
+      }
+
+    } else {
+        debugPrintln("Time difference to last position is too high");        
+        isMissionMode = true;
+        latLast = "";
+        lonLast = "";
+     }
 
     // Berechne die Entfernung zum letzten Punkt
     if (latLast != "" && lonLast != "") {
@@ -129,38 +133,39 @@ void loop() {
       latDifference = calculateDifference(lat.toDouble(), latLast.toDouble());
       lonDifference = calculateDifference(lon.toDouble(), lonLast.toDouble());  
       logging += ";" + String(latDifference, 6) + ";" + String(lonDifference, 6);
+    } else {
+      logging += ";;";
+      distanceLast, latDifference, lonDifference = 0;
     }
     logging += "\n";
 
     // Ersetze Punkte durch Kommas in den Zahlen
     logging.replace('.', ',');
 //--------------------------------------------------------------------------------------------------------------------------------
-//  if (millis() - lastSwitchTime >= switchInterval) {
-        bool withinRange = false;
-        for (const auto& pos : lastPositions) {
-          if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
-            withinRange = true;
-            break;
-        //   }
-        }
-        if (withinRange) {
-          isMissionMode = false;
-        //   lastSwitchTime = millis();
-          debugPrintln("Switched to Station Mode");
-          enableDeepSleep(); // Deep-Sleep-Modus aktivieren
-        } else {
-          isMissionMode = true;
-          lastSwitchTime = millis();
-          debugPrintln("Switched to Mission Mode");
-          enableALPMode(); // ALP-Modus aktivieren
-          enableLightSleep(); // Aktivieren des Light-Sleep-Modus im Mission-Modus
-        }
-      }
+
+    bool withinRange = false;
+    for (const auto& pos : stationPositions) {
+      if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
+        withinRange = true;
+        break;
+    
+    }
+    if (withinRange) {
+      isMissionMode = false;
+      debugPrintln("Switched to Station Mode");
+      enableDeepSleep(); // Deep-Sleep-Modus aktivieren
+    } else {
+      isMissionMode = true;
+      debugPrintln("Switched to Mission Mode");
+      enableALPMode(); // ALP-Modus aktivieren
+      enableLightSleep(); // Aktivieren des Light-Sleep-Modus im Mission-Modus
+    }
+  }
 
        // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu  
     } else {
       bool withinRange = false;
-      for (const auto& pos : lastPositions) {
+      for (const auto& pos : stationPositions) {
         if (isWithinRange(lat.toDouble(), lon.toDouble(), pos.first, pos.second, circleAroundPosition)) {
           withinRange = true;
           break;
@@ -173,20 +178,6 @@ void loop() {
         enableALPMode(); // ALP-Modus aktivieren
               }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -218,7 +209,7 @@ void loop() {
         debugPrintln(" " + directionLat);
         debugPrint("LON: "); 
         debugPrint(lon);
-        debugPrintln(" " + directionLng);
+        debugPrintln(" " + directionLon);
         debugPrint("SPEED (knots) = "); 
         debugPrintln(speed); 
         debugPrint("Alt = "); 
@@ -237,3 +228,5 @@ void loop() {
         latLast = lat;
         lonLast = lon;
       }
+    }
+  }

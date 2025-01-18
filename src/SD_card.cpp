@@ -45,20 +45,23 @@
 
 // Funktion zum Schreiben in die Datei debug.txt
 void writeDebug(const String &message) {
-  File file = SD.open("/debug.txt", FILE_APPEND);
-  if (file) {
-    file.println(message);
-    file.close();
-  } else {
-    Serial.println("Fehler beim Öffnen der Datei debug.txt");
+  if (TEST) {
+      File file = SD.open("/debug.txt", FILE_APPEND);
+    if (file) {
+      file.println(message);
+      file.close();
+    } else {
+      Serial.println("Fehler beim Öffnen der Datei debug.txt");
+    }
   }
+
 }
 
 // Wrapper-Funktion für Serial.print
 void debugPrint(const String &message) {
-  Serial.print(message);
-  writeDebug(message);
-}
+    Serial.print(message);
+    writeDebug(message);
+  }
 
 // Wrapper-Funktion für Serial.println
 void debugPrintln(const String &message) {
