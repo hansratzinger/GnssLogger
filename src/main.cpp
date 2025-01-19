@@ -35,14 +35,14 @@ RTC_DATA_ATTR bool isWakedUpRTC;
 const bool TEST = true; // Definition der Konstante TEST
 
 const unsigned long switchInterval = 300000; // 5 Minuten in Millisekunden
-const double circleAroundPosition = 1.0; // Radius in Metern
+const double circleAroundPosition = 15.0; // Radius in Metern
 const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
 const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
 const double hdopTreshold = 0.7; // HDOP-Schwellenwert
 const unsigned long timeToLastPositionTreshold = 15; // Zeitdifferenz-Schwellenwert in Sekunden
 const unsigned long delayTime = 500; // LED blink delay time
 
-const String firstline = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff\n";
+const String firstline = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff;Distance/m\n";
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -86,7 +86,13 @@ void processAndStorePosition() {
     lonDifference = calculateDifference(lon.toDouble(), lonLast.toDouble());
     logging += ";" + String(latDifference, 6) + ";" + String(lonDifference, 6);
   }
-  logging += "\n";
+
+  // Berechne die Differenz der Position zur vorhergehenden Position in Metern
+  double positionDifference = 0.0;
+  if (latLast != "" && lonLast != "") {
+    positionDifference = calculateDistance(lat.toDouble(), lon.toDouble(), latLast.toDouble(), lonLast.toDouble());
+  }
+  logging += ";" + String(positionDifference, 6) + "\n";
 
   // Ersetze Punkte durch Kommas in den Zahlen
   logging.replace('.', ',');
@@ -214,6 +220,9 @@ void loop() {
           double newLon = gps.location.lng();
           if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
             stationPositions.push_back(std::make_pair(newLat, newLon));
+            debugPrintln("Added position to stationPositions: " + String(newLat, 6) + ", " + String(newLon, 6));
+          } else {
+            debugPrintln("Position out of range: " + String(newLat, 6) + ", " + String(newLon, 6));
           }
         }
       }
