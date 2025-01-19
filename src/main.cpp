@@ -5,6 +5,7 @@
 #include <WiFi.h> // Einbinden der WiFi-Bibliothek
 #include "GNSS_module.h" // Einbinden der GNSS-Modul-Header-Datei
 #include "SD_card.h" // Einbinden der SD-Karten-Header-Datei
+#include "Sleep.h" // Einbinden der Sleep-Header-Datei
 #include <esp_wifi.h>
 
 // Define the RX and TX pins for Serial 2
@@ -43,49 +44,6 @@ HardwareSerial gpsSerial(2); // Initialisierung von gpsSerial
 // Deque zum Speichern der letzten 5 Positionen
 std::deque<std::pair<double, double>> stationPositions;
 
-// Funktion zur Aktivierung des Light-Sleep-Modus
-void enableLightSleep() {
-    if (isMissionMode) {
-        debugPrintln("Light-Sleep-Modus aktiviert");
-        delay(100); // Warte 100 Millisekunden
-        esp_sleep_enable_timer_wakeup(sleepingTimeLightSleep * 1000000); // 2 Sekunden in Mikrosekunden
-        esp_light_sleep_start();
-    }
-}
-
-// Funktion zur Aktivierung des Deep-Sleep-Modus
-void enableDeepSleep() {
-    if (!isMissionMode) {
-        debugPrintln("Deep-Sleep-Modus aktiviert");
-        delay(100); // Warte 100 Millisekunden
-        esp_sleep_enable_timer_wakeup(sleepingTimeDeepSleep * 1000000); // 5 Sekunden in Mikrosekunden
-        esp_deep_sleep_start();
-    }
-}
-
-// Funktion zur Aktivierung des Modem-Sleep-Modus
-void enableModemSleep() {
-  WiFi.mode(WIFI_OFF); // Deaktivieren des WiFi-Moduls
-  esp_wifi_set_ps(WIFI_PS_MIN_MODEM); // Aktivieren des Modem-Sleep-Modus
-  Serial.println("Modem-Sleep-Modus aktiviert");
-}
-
-// Funktion zur Aktivierung des ALP-Modus
-void enableALPMode() {
-  // Befehl zur Aktivierung des ALP-Modus
-  const char* enableALPCommand = "$PMTK225,8*23\r\n";
-  gpsSerial.print(enableALPCommand);
-  Serial.println("ALP-Modus aktiviert");
-}
-
-// Funktion zur Deaktivierung des ALP-Modus
-void disableALPMode() {
-  // Befehl zur Deaktivierung des ALP-Modus
-  const char* disableALPCommand = "$PMTK225,0*2B\r\n";
-  gpsSerial.print(disableALPCommand);
-  Serial.println("ALP-Modus deaktiviert");
-}
-
 // Funktion zur Berechnung der Zeitdifferenz zwischen gpstime und gpstimeLast
 unsigned long getTimeDifference(const String &gpstime, const String &gpstimeLast) {
   int hour1, minute1, second1;
@@ -110,20 +68,13 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   return distance <= radius;
 }
 
-void blinkLED(int pin, int delayTime) {
-  digitalWrite(pin, HIGH);
-  delay(delayTime);
-  digitalWrite(pin, LOW);
-  delay(delayTime);
-}
-
 void setup() {
   // Serial Monitor
   Serial.begin(115200);
   
   // Start Serial 2 with the defined RX and TX pins and a baud rate of 9600
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2);
-  debugPrintln("Serial 2 started at 9600 baud rate");
+  debugPrintln("Serial 2 started at " + String(GPS_BAUD) + " baud rate");
 
   if (!SD.begin()) {
     debugPrintln("Card Mount Failed");
@@ -167,12 +118,6 @@ void setup() {
   digitalWrite(RED_LED_PIN, LOW);
   digitalWrite(GREEN_LED_PIN, LOW);
 
-  for (int i = 0; i < 5; i++) {
-    blinkLED(RED_LED_PIN, 500);
-    blinkLED(GREEN_LED_PIN, 500);
-  }
-
-  delay(1000);
 }
 
 void loop() {
@@ -314,7 +259,13 @@ void loop() {
       }
 
       // Aktivieren des Light-Sleep-Modus im Mission-Modus
-      enableLightSleep();
+      enableLightSleep(sleepingTimeLightSleep);
+
+      // Schalte die LEDs entsprechend dem Modus
+      if (TEST) {
+        digitalWrite(RED_LED_PIN, LOW);
+        digitalWrite(GREEN_LED_PIN, HIGH);
+      }
     } else {
       // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
       bool outsideDoubleRadius = true;
@@ -330,6 +281,15 @@ void loop() {
         debugPrintln("Switched to Mission Mode due to position outside double radius");
       }
 
+      // Aktivieren des Deep-Sleep-Modus im Station-Modus
+      enableDeepSleep(sleepingTimeDeepSleep);
+
+      // Schalte die LEDs entsprechend dem Modus
+      if (TEST) {
+        digitalWrite(RED_LED_PIN, HIGH);
+        digitalWrite(GREEN_LED_PIN, LOW);
+      }
+
     }
 
     // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
@@ -342,10 +302,10 @@ void loop() {
     if (!isMissionMode) {
       // Speichern der Daten im RTC-Speicher
       saveToRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionModeRTC, isWakedUpRTC=false);
-      enableDeepSleep();
+      enableDeepSleep(deepSleepTime);
     } else {
       // Speichern der Daten im RTC-Speicher
       saveToRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionModeRTC=true, isWakedUpRTC=false);
-      enableLightSleep();
+      enableLightSleep(lightSleepTime);
     }
 }
