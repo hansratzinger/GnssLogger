@@ -5,6 +5,7 @@
 #include <TinyGPS++.h>
 #include <WiFi.h> // Einbinden der WiFi-Bibliothek
 #include <esp_wifi.h>
+#include <FS.h>
 
 // Deklaration von gpsSerial
 extern HardwareSerial gpsSerial;

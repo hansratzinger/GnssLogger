@@ -15,8 +15,8 @@
 #define GPS_BAUD 115200
 
 // Define the GPIO pins for the LEDs
-#define RED_LED_PIN 25 // station mode  // Definition des GPIO-Pins für die rote LED
-#define GREEN_LED_PIN 26 // mission mode // Definition des GPIO-Pins für die grüne LED
+const int RED_LED_PIN = 25; // station mode  // Definition des GPIO-Pins für die rote LED
+const int GREEN_LED_PIN = 26; // mission mode // Definition des GPIO-Pins für die grüne LED
 
 unsigned long start = millis();
 String gpstime, date, lat, directionLat, lon, directionLon, speed, altitude, hdop, satellites, logging;

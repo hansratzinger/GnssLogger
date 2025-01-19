@@ -6,8 +6,6 @@
 #include "Morse_LED.h" // Einbinden der Morse_LED-Header-Datei
 
 extern const bool TEST;  // in main.cpp definiert für Testzwecke
-extern const int RED_LED_PIN; // in main.cpp definiert für rote LED
-extern const int GREEN_LED_PIN; // in main.cpp definiert für grüne LED
 
 // Funktion zur Aktivierung des Light-Sleep-Modus
 void enableLightSleep(unsigned long seconds) {
