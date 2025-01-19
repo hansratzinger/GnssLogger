@@ -19,7 +19,7 @@ const int RED_LED_PIN = 25; // station mode  // Definition des GPIO-Pins für di
 const int GREEN_LED_PIN = 26; // mission mode // Definition des GPIO-Pins für die grüne LED
 
 unsigned long start = millis();
-String gpstime, date, lat, directionLat, lon, directionLon, speed, altitude, hdop, satellites, logging;
+String gpstime, date, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites, logging;
 String gpstimeLast, dateLast, latLast, lonLast, speedLast, altitudeLast, hdopLast, satellitesLast, loggingLast, firstlineLast;  
 double distanceLast, latDifference, lonDifference;
 bool isMissionMode = true;
@@ -27,6 +27,10 @@ bool isWakedUp = false;
 bool isWakedUpFromLightSleep = false;
 bool isWakedUpFromDeepSleep = false;
 bool isWakedUpFromDeepSleepRTC = false;
+ 
+RTC_DATA_ATTR bool isMissionModeRTC = true;
+RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
+RTC_DATA_ATTR bool isWakedUpRTC; 
 
 const bool TEST = true; // Definition der Konstante TEST
 
@@ -114,9 +118,7 @@ void setup() {
 
   // Load data from RTC memory
   loadFromRTC(gpstimeLast, dateLast, latLast, lonLast, isMissionMode);
-
-  // Aktivieren des Modem-Sleep-Modus
-  enableModemSleep();
+  loadStationPositionsFromRTC(stationPositions);
 
   // Initialisiere die LED-Pins
   pinMode(RED_LED_PIN, OUTPUT);
@@ -124,6 +126,8 @@ void setup() {
   digitalWrite(RED_LED_PIN, LOW);
   digitalWrite(GREEN_LED_PIN, LOW);
 
+  // Aktivieren des Modem-Sleep-Modus
+  enableModemSleep();
 }
 
 void loop() {
@@ -166,44 +170,37 @@ void loop() {
     unsigned long timeDifference = getTimeDifference(gpstime, gpstimeLast);
     debugPrintln("Time difference: " + String(timeDifference) + " seconds");
 
-    // Überprüfe die Distanz zur vorhergehenden Position
-    if (latLast != "" && lonLast != "" && distanceLast > circleAroundPosition) {
-      // Wechsel in den Mission-Modus und schreibe die Position auf die SD-Karte
-      isMissionMode = true;
+    if (timeDifference > timeToLastPositionTreshold) {
+      // Füge die aktuelle Position zur Liste 5 Station-Positionen hinzu
+      // neue Station-Positionen werden am Anfang der Liste hinzugefügt
       stationPositions.clear();
-      debugPrintln("Switched to Mission Mode due to distance");
-
-      // Schreibe die aktuelle Position auf die SD-Karte
-      String fileName = generateFileName(gps);
-      if (!SD.exists(fileName.c_str())) {
-        // Datei existiert nicht, erstelle die Datei und schreibe die erste Zeile
-        writeFile(SD, fileName.c_str(), firstline.c_str());
-      }
-      appendFile(SD, fileName.c_str(), logging.c_str());
-    } else {
-      // Überprüfe, ob die neue Position innerhalb des Positionskreises zur vorhergehenden Position liegt
-      if (latLast != "" && lonLast != "" && distanceLast <= circleAroundPosition) {
-        // Beginne, die Positionen als neue Station-Positionen zu speichern
-        if (stationPositions.size() == 0) {
-          stationPositions.push_back(std::make_pair(latLast.toDouble(), lonLast.toDouble()));
+      stationPositions.push_back(std::make_pair(lat.toDouble(), lon.toDouble()));
+      while (stationPositions.size() < 5) {
+        // Warte auf die nächste gültige Position
+        while (gpsSerial.available() > 0) {
+          gps.encode(gpsSerial.read());
         }
-        stationPositions.push_back(std::make_pair(lat.toDouble(), lon.toDouble()));
-
-        // Wenn 5 Positionen gesammelt wurden, wechsle in den Station-Modus
-        if (stationPositions.size() >= 5) {
-          isMissionMode = false;
-          debugPrintln("Switched to Station Mode");
-
-          // Schreibe die Station-Positionen auf die SD-Karte
-          for (const auto& pos : stationPositions) {
-            String stationLogging = date + ";" + gpstime + ";" + String(pos.first, 6) + ";" + directionLat + ";" + String(pos.second, 6) + ";" + directionLng + ";" + speed + ";" + altitude + ";" + hdop + ";" + satellites + ";station-mode\n";
-            String fileName = generateFileName(gps);
-            if (!SD.exists(fileName.c_str())) {
-              // Datei existiert nicht, erstelle die Datei und schreibe die erste Zeile
-              writeFile(SD, fileName.c_str(), firstline.c_str());
-            }
-            appendFile(SD, fileName.c_str(), stationLogging.c_str());
+        if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold)) {
+          double newLat = gps.location.lat();
+          double newLon = gps.location.lng();
+          if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
+            stationPositions.push_back(std::make_pair(newLat, newLon));
           }
+        }
+      }
+      if (stationPositions.size() == 5) {
+        isMissionMode = false;
+        debugPrintln("Switched to Station Mode");
+
+        // Schreibe die Station-Positionen auf die SD-Karte
+        for (const auto& pos : stationPositions) {
+          String stationLogging = date + ";" + gpstime + ";" + String(pos.first, 6) + ";" + directionLat + ";" + String(pos.second, 6) + ";" + directionLng + ";" + speed + ";" + altitude + ";" + hdop + ";" + satellites + ";station-mode\n";
+          String fileName = generateFileName(gps);
+          if (!SD.exists(fileName.c_str())) {
+            // Datei existiert nicht, erstelle die Datei und schreibe die erste Zeile
+            writeFile(SD, fileName.c_str(), firstline.c_str());
+          }
+          appendFile(SD, fileName.c_str(), stationLogging.c_str());
         }
       }
     }
@@ -275,8 +272,7 @@ void loop() {
 
       // Schalte die LEDs entsprechend dem Modus
       if (TEST) {
-        digitalWrite(RED_LED_PIN, LOW);
-        digitalWrite(GREEN_LED_PIN, HIGH);
+        blinkMorseCode("G", GREEN_LED_PIN, 1); // Grüne LED blinkt im Mission-Modus
       }
     } else {
       // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
@@ -294,12 +290,23 @@ void loop() {
       }
 
       // Aktivieren des Deep-Sleep-Modus im Station-Modus
-      enableDeepSleep(sleepingTimeDeepSleep);
+      if (stationPositions.size() >= 5) {
+        saveStationPositionsToRTC(stationPositions);
+        for (const auto& pos : stationPositions) {
+          String stationLogging = date + ";" + gpstime + ";" + String(pos.first, 6) + ";" + directionLat + ";" + String(pos.second, 6) + ";" + directionLng + ";" + speed + ";" + altitude + ";" + hdop + ";" + satellites + ";station-mode\n";
+          String fileName = generateFileName(gps);
+          if (!SD.exists(fileName.c_str())) {
+            // Datei existiert nicht, erstelle die Datei und schreibe die erste Zeile
+            writeFile(SD, fileName.c_str(), firstline.c_str());
+          }
+          appendFile(SD, fileName.c_str(), stationLogging.c_str());
+        }
+        enableDeepSleep(sleepingTimeDeepSleep);
+      }
 
       // Schalte die LEDs entsprechend dem Modus
       if (TEST) {
-        digitalWrite(RED_LED_PIN, HIGH);
-        digitalWrite(GREEN_LED_PIN, LOW);
+        blinkMorseCode("R", RED_LED_PIN, 1); // Rote LED blinkt im Station-Modus
       }
     }
 

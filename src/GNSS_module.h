@@ -11,6 +11,10 @@
 extern HardwareSerial gpsSerial;
 extern const unsigned long deepSleepTime; // Second 
 extern const unsigned long lightSleepTime; // Second
+
+extern RTC_DATA_ATTR bool isMissionModeRTC;
+extern RTC_DATA_ATTR bool isWakedUpRTC;
+
 String generateFileName(TinyGPSPlus &gps);
 String getDirectionLat(double latitude);
 String getDirectionLng(double longitude);

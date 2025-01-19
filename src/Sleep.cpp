@@ -4,8 +4,12 @@
 #include <esp_wifi.h>
 #include "GNSS_module.h" // Einbinden der GNSS-Modul-Header-Datei
 #include "Morse_LED.h" // Einbinden der Morse_LED-Header-Datei
+#include <deque>
 
 extern const bool TEST;  // in main.cpp definiert für Testzwecke
+extern const int RED_LED_PIN;
+extern const int GREEN_LED_PIN;
+extern RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
 
 // Funktion zur Aktivierung des Light-Sleep-Modus
 void enableLightSleep(unsigned long seconds) {
@@ -47,4 +51,14 @@ void disableModemSleep() {
   esp_wifi_set_ps(WIFI_PS_NONE); // Deaktivieren des Modem-Sleep-Modus
   WiFi.mode(WIFI_STA); // Aktivieren des WiFi-Moduls
   debugPrintln("Modem-Sleep-Modus deaktiviert");
+}
+
+// Funktion zum Speichern der Station-Positionen im RTC-Speicher
+void saveStationPositionsToRTC(const std::deque<std::pair<double, double>>& stationPositions) {
+  stationPositionsRTC = stationPositions;
+}
+
+// Funktion zum Laden der Station-Positionen aus dem RTC-Speicher
+void loadStationPositionsFromRTC(std::deque<std::pair<double, double>>& stationPositions) {
+  stationPositions = stationPositionsRTC;
 }
