@@ -9,19 +9,21 @@
 
 // Definition der RTC-Variablen
 
-RTC_DATA_ATTR String gpstimeLastRTC;
-RTC_DATA_ATTR String dateLastRTC;
-RTC_DATA_ATTR String latLastRTC;
-RTC_DATA_ATTR String lonLastRTC;
+extern RTC_DATA_ATTR String gpstimeLastRTC;
+extern RTC_DATA_ATTR String dateLastRTC;
+extern RTC_DATA_ATTR String latLastRTC;
+extern RTC_DATA_ATTR String lonLastRTC;
 
 const bool TEST = true; // Definition der Konstante TEST
 
-void saveToRTC(const String &gpstimeLast, const String &dateLast, const String &latLast, const String &lonLast, bool isMissionMode, bool isWakedUp) {
-  gpstimeLastRTC = gpstimeLast;
-  dateLastRTC = dateLast;
-  latLastRTC = latLast;
-  lonLastRTC = lonLast;
+void saveToRTC(const String &gpstime, const String &date, const String &lat, const String &lon, bool isMissionMode) {
+  // Implementierung der Funktion
+  gpstimeLastRTC = gpstime;
+  dateLastRTC = date;
+  latLastRTC = lat;
+  lonLastRTC = lon;
   isMissionModeRTC = isMissionMode;
+  debugPrintln("Saved to RTC: latLastRTC: " + latLastRTC + ", lonLastRTC: " + lonLastRTC);
 }
 
 void loadFromRTC(String &gpstimeLast, String &dateLast, String &latLast, String &lonLast, bool &isMissionMode) {
@@ -30,6 +32,7 @@ void loadFromRTC(String &gpstimeLast, String &dateLast, String &latLast, String 
   latLast = latLastRTC;
   lonLast = lonLastRTC;
   isMissionMode = isMissionModeRTC;
+  debugPrintln("Loaded from RTC: latLastRTC: " + latLastRTC + ", lonLastRTC: " + lonLastRTC);
 }
 double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
   const double R = 6371000; // Radius der Erde in Metern

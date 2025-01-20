@@ -27,7 +27,7 @@ extern RTC_DATA_ATTR bool isWakedUpRTC;
 double calculateDistance(double lat1, double lon1, double lat2, double lon2);
 double calculateDifference(double firstData, double secondData);
 void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus &gps);
-void saveToRTC(const String &gpstimeLast, const String &dateLast, const String &latLast, const String &lonLast, bool isMissionMode, bool isWakedUp);
+void saveToRTC(const String &gpstimeLast, const String &dateLast, const String &latLast, const String &lonLast, bool isMissionMode);
 void loadFromRTC(String &gpstimeLast, String &dateLast, String &latLast, String &lonLast, bool &isMissionMode);
 
 
