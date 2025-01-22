@@ -12,7 +12,7 @@
 
 ### Mission-Mode
 
-Jede Position wird auf die Speicherkarte geschrieben und danach wird für 2 Sekunden in light sleep gewechselt. Dabei wird das Programm angehalten und nach aufwachen wieder fortgesetzt. Die Variablen bleiben im Speicher erhalten. Der Mission-Modus definiert sich dadurch, dass die neue Position ausserhalb eines definierten Abstandes, dem Positionskreis, zur vorhergehenden Position liegt. Liegt die neue Position innerhalb des Positionskreises der vorhergehenden Position, werden beide Positionen sowohl auf die SD-card wie auch in das Station-Mode-Memory (SMM) geschrieben. Dieses umfasst 10 Positionen, die alle gegenseitig innerhalb ihrer Positonskreise liegen müssen. Wenn das SMM komplett gefüllt ist, wird in den Station-Mode gewechselt.
+Im Mission-Mode wird jede Position auf die Speicherkarte geschrieben und danach wird für 2 Sekunden in light sleep gewechselt. Dabei wird das Programm angehalten und nach aufwachen wieder fortgesetzt. Die Variablen bleiben im Speicher erhalten. Der Mission-Modus definiert sich dadurch, dass die neue Position ausserhalb eines definierten Abstandes, dem Positionskreis, zur vorhergehenden Position liegt. Liegt die neue Position innerhalb des Positionskreises der vorhergehenden Position, werden beide Positionen sowohl auf die SD-card wie auch in das Station-Mode-Memory (SMM) geschrieben. Dieses umfasst 10 Positionen, die alle gegenseitig innerhalb ihrer Positonskreise liegen müssen. Wenn das SMM komplett gefüllt ist, wird in den Station-Mode gewechselt.
 
 ### Station-Mode
 

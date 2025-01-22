@@ -91,7 +91,22 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   return distance <= radius;
 }
 
-void processAndStorePosition() {
+void processPosition() {   
+  snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
+  snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
+
+  // Bestimme die Himmelsrichtung
+  snprintf(directionLat, sizeof(directionLat), "%c", getDirectionLat(gps.location.lat()));
+  snprintf(directionLng, sizeof(directionLng), "%c", getDirectionLng(gps.location.lng()));
+
+  snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
+  snprintf(date, sizeof(date), "%04d/%02d/%02d", gps.date.year(), gps.date.month(), gps.date.day());
+  snprintf(hdop, sizeof(hdop), "%.1f", gps.hdop.hdop());
+  snprintf(satellites, sizeof(satellites), "%d", gps.satellites.value());
+  snprintf(speed, sizeof(speed), "%.1f", gps.speed.knots());
+  snprintf(altitude, sizeof(altitude), "%.1f", gps.altitude.meters());
+  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites);
+
   // Berechnung der Distanz zwischen der aktuellen und der letzten Position
   distanceLast = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
 
@@ -111,7 +126,9 @@ void processAndStorePosition() {
       logging[i] = ',';
     }
   }
+}
 
+void storePosition() {
   // Debug-Ausgabe
   Serial.print("new logging: ");
   Serial.println(logging);
@@ -128,6 +145,9 @@ void setup() {
   // WiFi und Bluetooth ausschalten
   WiFi.mode(WIFI_OFF);
   btStop();
+
+  // Initialisiere die SD-Karte
+  initializeSDCard();
 
   // Überprüfen des Wakeup-Reasons
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
@@ -154,39 +174,6 @@ void setup() {
       break;
   }
 
-  // Start Serial 2 with the defined RX and TX pins and a baud rate of 9600
-  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2);
-  debugPrintln("Serial 2 started at " + String(GPS_BAUD) + " baud rate");
-
-  if (!SD.begin()) {
-    debugPrintln("Card Mount Failed");
-    return;
-  }
-  uint8_t cardType = SD.cardType();
-
-  if (cardType == CARD_NONE) {
-    debugPrintln("No SD card attached");
-    return;
-  }
-
-  debugPrint("SD Card Type: ");
-  if (cardType == CARD_MMC) {
-    debugPrintln("MMC");
-  } else if (cardType == CARD_SD) {
-    debugPrintln("SDSC");
-  } else if (cardType == CARD_SDHC) {
-    debugPrintln("SDHC");
-  } else if (cardType == CARD_UNKNOWN) {
-    debugPrintln("UNKNOWN CARD");
-  } else if (cardType == CARD_NONE) {
-    debugPrintln("No SD card attached");
-    return;
-  }
-  
-  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-  debugPrintln("SD Card Size: " + String(cardSize) + "MB");
-
-  listDir(SD, "/", 0);
 
   // Load data from RTC memory only if waking up from deep sleep
   if (isWakedUpFromDeepSleep) {
@@ -218,31 +205,19 @@ void loop() {
     gps.encode(gpsSerial.read());
   }
   if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
-    snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
-    snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
-
-    // Bestimme die Himmelsrichtung
-    snprintf(directionLat, sizeof(directionLat), "%c", getDirectionLat(gps.location.lat()));
-    snprintf(directionLng, sizeof(directionLng), "%c", getDirectionLng(gps.location.lng()));
-
-    snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
-    snprintf(date, sizeof(date), "%04d/%02d/%02d", gps.date.year(), gps.date.month(), gps.date.day());
-    snprintf(hdop, sizeof(hdop), "%.1f", gps.hdop.hdop());
-    snprintf(satellites, sizeof(satellites), "%d", gps.satellites.value());
-    snprintf(speed, sizeof(speed), "%.1f", gps.speed.knots());
-    snprintf(altitude, sizeof(altitude), "%.1f", gps.altitude.meters());
-    snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites);
-
+    
     // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
-    processAndStorePosition();
+    processPosition();
 
     // Berechne die Zeitdifferenz zwischen gpstime und gpstimeLast
     if (strlen(gpstimeLast) > 0) {
         timeDifference = getTimeDifference(gpstime, gpstimeLast);
         debugPrintln("Time difference: " + String(timeDifference) + " seconds");
-    } 
-    if ((timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { // Überprüfe, ob die letzte Position lang zurückliegt -> die Zeitdifferenz größer als der Schwellenwert ist
-      // Wenn die letzte Position lange zurückliegt, wird der Mission-Modus aktiviert
+    }
+    if ((timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
+      // Überprüfe, ob die letzte Position lang zurückliegt 
+      // und die Zeitdifferenz größer als der Schwellenwert ist
+      // Wenn true wird der Mission-Modus aktiviert und der Postionsspeicher geleert
       // neue Station-Positionen werden am Anfang der Liste hinzugefügt
       stationPositions.clear();
       stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
@@ -283,8 +258,7 @@ void loop() {
         }
       }
     }
-    
-    // Wechsel zwischen Station- und Mission-Modus
+    }    // Wechsel zwischen Station- und Mission-Modus
     if (isMissionMode) {
       // Schreibe nur im Mission-Modus auf die SD-Karte
       if (strcmp(date, "2000/00/00") != 0) {

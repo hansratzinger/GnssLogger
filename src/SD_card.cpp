@@ -262,3 +262,39 @@ void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus 
   }
   file.close();
 }
+
+void initializeSDCard() {
+  // Start Serial 2 with the defined RX and TX pins and a baud rate of 9600
+  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2);
+  debugPrintln("Serial 2 started at " + String(GPS_BAUD) + " baud rate");
+
+  if (!SD.begin()) {
+    debugPrintln("Card Mount Failed");
+    return;
+  }
+  uint8_t cardType = SD.cardType();
+
+  if (cardType == CARD_NONE) {
+    debugPrintln("No SD card attached");
+    return;
+  }
+
+  debugPrint("SD Card Type: ");
+  if (cardType == CARD_MMC) {
+    debugPrintln("MMC");
+  } else if (cardType == CARD_SD) {
+    debugPrintln("SDSC");
+  } else if (cardType == CARD_SDHC) {
+    debugPrintln("SDHC");
+  } else if (cardType == CARD_UNKNOWN) {
+    debugPrintln("UNKNOWN CARD");
+  } else if (cardType == CARD_NONE) {
+    debugPrintln("No SD card attached");
+    return;
+  }
+  
+  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+  debugPrintln("SD Card Size: " + String(cardSize) + "MB");
+
+  listDir(SD, "/", 0);
+}
