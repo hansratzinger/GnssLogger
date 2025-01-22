@@ -17,20 +17,20 @@
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
-unsigned long lastSwitchTime, timeDifference = 0;
+unsigned long lastSwitchTime = 0, timeDifference = 0;
 double positionDifference = 0.0;
-char gpstime[10], date[11], lat[15], directionLat[2], lon[15], directionLng[2], speed[10], altitude[10], hdop[10], satellites[10], logging[100];
-char gpstimeLast[10], dateLast[11], latLast[15], lonLast[15], speedLast[10], altitudeLast[10], hdopLast[10], satellitesLast[10], loggingLast[100], firstlineLast[100];  
-double distanceLast, latDifference, lonDifference;
+char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "", logging[100] = "";
+char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";  
+double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
 bool isMissionMode = true;
 bool isWakedUp = false;
 bool isWakedUpFromLightSleep = false;
 bool isWakedUpFromDeepSleep = false;
 
 RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
-RTC_DATA_ATTR bool isWakedUpRTC, isMissionModeRTC, isWakedUpFromDeepSleepRTC; 
-RTC_DATA_ATTR char latLastRTC[15], lonLastRTC[15], gpstimeLastRTC[10], dateLastRTC[11];
-RTC_DATA_ATTR unsigned long timeDifferenceRTC;
+RTC_DATA_ATTR bool isWakedUpRTC = false, isMissionModeRTC = false, isWakedUpFromDeepSleepRTC = false; 
+RTC_DATA_ATTR char latLastRTC[15] = "", lonLastRTC[15] = "", gpstimeLastRTC[10] = "", dateLastRTC[11] = "";
+RTC_DATA_ATTR unsigned long timeDifferenceRTC = 0;
 
 // Struktur für RTC-Speicher
 struct RtcData {
@@ -102,7 +102,7 @@ void processAndStorePosition() {
   lonDifference = calculateDifference(atof(lon), atof(lonLast));
   snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f;%.6f", latDifference, lonDifference);
 
- positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
+  positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast));
   snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f\n", positionDifference);
 
   // Ersetzen von '.' durch ',' in logging
@@ -125,15 +125,35 @@ void setup() {
   // Serial Monitor
   Serial.begin(115200);
 
-  WiFi.mode(WIFI_OFF);  // Deaktivieren des WiFi-Moduls
-  btStop(); // Deaktivieren des Bluetooth-Moduls
+  // WiFi und Bluetooth ausschalten
+  WiFi.mode(WIFI_OFF);
+  btStop();
 
-   // Initialisiere die LED-Pins
-  pinMode(RED_LED_PIN, OUTPUT);
-  pinMode(GREEN_LED_PIN, OUTPUT);
-  digitalWrite(RED_LED_PIN, LOW);
-  digitalWrite(GREEN_LED_PIN, LOW);
-  
+  // Überprüfen des Wakeup-Reasons
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  switch (wakeup_reason) {
+    case ESP_SLEEP_WAKEUP_EXT0: 
+      Serial.println("Wakeup caused by external signal using RTC_IO");
+      break;
+    case ESP_SLEEP_WAKEUP_EXT1: 
+      Serial.println("Wakeup caused by external signal using RTC_CNTL");
+      break;
+    case ESP_SLEEP_WAKEUP_TIMER: 
+      Serial.println("Wakeup caused by timer");
+      isWakedUpFromDeepSleep = true;
+      isWakedUpRTC = true; // Setze die RTC-Variable auf true
+      break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD: 
+      Serial.println("Wakeup caused by touchpad");
+      break;
+    case ESP_SLEEP_WAKEUP_ULP: 
+      Serial.println("Wakeup caused by ULP program");
+      break;
+    default: 
+      Serial.println("Wakeup was not caused by deep sleep");
+      break;
+  }
+
   // Start Serial 2 with the defined RX and TX pins and a baud rate of 9600
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2);
   debugPrintln("Serial 2 started at " + String(GPS_BAUD) + " baud rate");
@@ -166,50 +186,7 @@ void setup() {
   uint64_t cardSize = SD.cardSize() / (1024 * 1024);
   debugPrintln("SD Card Size: " + String(cardSize) + "MB");
 
-  // listDir(SD, "/", 0);
-
-  // Überprüfen des Wakeup-Reasons
-  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-  switch (wakeup_reason) {
-    case ESP_SLEEP_WAKEUP_EXT0: 
-      Serial.println("Wakeup caused by external signal using RTC_IO");
-      break;
-    case ESP_SLEEP_WAKEUP_EXT1: 
-      Serial.println("Wakeup caused by external signal using RTC_CNTL");
-      break;
-    case ESP_SLEEP_WAKEUP_TIMER: 
-      Serial.println("Wakeup caused by timer");
-      isWakedUpFromDeepSleep = true;
-      isWakedUpRTC = true; // Setze die RTC-Variable auf true
-      break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD: 
-      Serial.println("Wakeup caused by touchpad");
-      break;
-    case ESP_SLEEP_WAKEUP_ULP: 
-      Serial.println("Wakeup caused by ULP program");
-      break;
-    default: 
-      Serial.println("Wakeup was not caused by deep sleep");
-      break;
-  }
-
-  if (!isWakedUpFromDeepSleep) {
-    isWakedUpRTC = false; // Setze die RTC-Variable auf false
-    Serial.println("Booting up for the first time");
-    delay(7500); // for starting the Serial Monitor
-  } else {
-    isWakedUpRTC = true; // Setze die RTC-Variable auf true
-    // write to debug.txt if TEST is true
-    debugPrintln("Waking up from deep sleep caused by timer");
-    debugPrintln("isWakedUpRTC: " + String(isWakedUpRTC));
-    debugPrintln("isMissionModeRTC: " + String(rtcData.isMissionMode));  
-    debugPrintln("timeDifferenceRTC: " + rtcData.timeDifference );
-    debugPrint("LatLast: ");
-    debugPrint(rtcData.latLast);
-     debugPrint(", LonLast: ");
-    debugPrintln(rtcData.lonLast );
-    debugPrintln("Loaded data from RTC memory");
-  }
+  listDir(SD, "/", 0);
 
   // Load data from RTC memory only if waking up from deep sleep
   if (isWakedUpFromDeepSleep) {
@@ -222,12 +199,17 @@ void setup() {
     loadStationPositionsFromRTC(stationPositions);
   }
 
-  // // Debug-Ausgabe der geladenen Werte
-  // Serial.print("LatLast: ");
-  // Serial.print(rtcData.latLast);
-  // Serial.print(", LonLast: ");
-  // Serial.println(rtcData.lonLast);
+  // Debug-Ausgabe der geladenen Werte
+  Serial.print("LatLast: ");
+  Serial.print(rtcData.latLast);
+  Serial.print(", LonLast: ");
+  Serial.println(rtcData.lonLast);
 
+  // Initialisiere die LED-Pins
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
 }
 
 void loop() {
@@ -260,11 +242,13 @@ void loop() {
         debugPrintln("Time difference: " + String(timeDifference) + " seconds");
     } 
     if ((timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { // Überprüfe, ob die letzte Position lang zurückliegt -> die Zeitdifferenz größer als der Schwellenwert ist
-      // Füge die aktuelle Position zur Liste 5 Station-Positionen hinzu
+      // Wenn die letzte Position lange zurückliegt, wird der Mission-Modus aktiviert
       // neue Station-Positionen werden am Anfang der Liste hinzugefügt
       stationPositions.clear();
       stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
-      while (stationPositions.size() < 5) {
+      
+      // Ermitteln von 10 Positionen für den Station-Mode
+      while (stationPositions.size() < 10) {
         // Warte auf die nächste gültige Position
         while (gpsSerial.available() > 0) {
           gps.encode(gpsSerial.read());
@@ -277,13 +261,16 @@ void loop() {
             debugPrintln("Added position to stationPositions: " + String(newLat, 6) + ", " + String(newLon, 6));
           } else {
             debugPrintln("Position out of range: " + String(newLat, 6) + ", " + String(newLon, 6));
+            stationPositions.clear();
+            stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
           }
         }
       }
-      if (stationPositions.size() == 5) {
+      
+      if (stationPositions.size() == 10) {
         isMissionMode = false;
         debugPrintln("Switched to Station Mode");
-
+    
         // Schreibe die Station-Positionen auf die SD-Karte
         for (const auto& pos : stationPositions) {
           snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
@@ -296,7 +283,7 @@ void loop() {
         }
       }
     }
-
+    
     // Wechsel zwischen Station- und Mission-Modus
     if (isMissionMode) {
       // Schreibe nur im Mission-Modus auf die SD-Karte
@@ -309,7 +296,7 @@ void loop() {
         // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
         processAndStorePosition();
       }
-
+    
       if (millis() - lastSwitchTime >= switchInterval) {
         bool withinRange = false;
         for (const auto& pos : stationPositions) {
@@ -324,7 +311,7 @@ void loop() {
           debugPrintln("Switched to Station Mode");
         }
       }
-
+    
       // Aktivieren des Light-Sleep-Modus im Mission-Modus
       enableLightSleep(sleepingTimeLightSleep);
     } else {
@@ -341,14 +328,13 @@ void loop() {
         stationPositions.clear();
         debugPrintln("Switched to Mission Mode due to position outside double radius");
       }
-
+    
       // Aktivieren des Deep-Sleep-Modus im Station-Modus
       if (stationPositions.size() >= 5) {
         saveStationPositionsToRTC(stationPositions);
         for (const auto& pos : stationPositions) {
           snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
-          String fileName = generateFileName(gps);
-          appendFile(SD, fileName.c_str(), logging);
+          processAndStorePosition();
         }
         
         // Save the last values
@@ -358,9 +344,18 @@ void loop() {
         strcpy(lonLast, lon);
         
         debugPrintln("Switched to Deep Sleep Mode");
-        debugPrintln("gpstimeLast: " + String(gpstimeLast) + ", dateLast: " + String(dateLast) + ", latLast: " + String(latLast) + ", lonLast: " + String(lonLast) + ", isMissionMode: " + String(isMissionMode));
+        Serial.print("gpstimeLast: ");
+        Serial.print(gpstimeLast);
+        Serial.print(", dateLast: ");
+        Serial.print(dateLast);
+        Serial.print(", latLast: ");
+        Serial.print(latLast);
+        Serial.print(", lonLast: ");
+        Serial.print(lonLast);
+        Serial.print(", isMissionMode: ");
+        Serial.println(isMissionMode);
         delay(delayTime); // Wartezeit für die LED-Anzeige
-
+    
         // Speichern der Daten im RTC-Speicher
         strcpy(rtcData.gpstimeLast, gpstimeLast);
         strcpy(rtcData.dateLast, dateLast);
@@ -370,25 +365,25 @@ void loop() {
         rtcData.timeDifference = timeDifference;
         enableDeepSleep(sleepingTimeDeepSleep);
       }
-
+    
       // Schalte die LEDs entsprechend dem Modus
       if (TEST) {
         blinkMorseCode("R", RED_LED_PIN, 1); // Rote LED blinkt im Station-Modus
       }
     }
-
+    
     // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
     stationPositions.push_back({atof(lat), atof(lon)});
     if (stationPositions.size() > 5) {
       stationPositions.pop_front();
     }
-
+    
     // Save the last values
     strcpy(gpstimeLast, gpstime);
     strcpy(dateLast, date);
     strcpy(latLast, lat);
     strcpy(lonLast, lon);
-
+    
     // Speichern der Daten im RTC-Speicher
     strcpy(rtcData.gpstimeLast, gpstimeLast);
     strcpy(rtcData.dateLast, dateLast);
