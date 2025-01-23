@@ -42,6 +42,7 @@
 #include "SD_card.h"
 #include <HardwareSerial.h>
 #include <TinyGPS++.h>
+#include "debug.h"
 
 // Deklaration von gpsSerial
 extern HardwareSerial gpsSerial; // Serial 2 verwenden
@@ -63,18 +64,6 @@ void writeDebug(const String &message) {
     }
   }
 
-}
-
-// Wrapper-Funktion für Serial.print
-void debugPrint(const String &message) {
-    Serial.print(message);
-    writeDebug(message);
-  }
-
-// Wrapper-Funktion für Serial.println
-void debugPrintln(const String &message) {
-  Serial.println(message);
-  writeDebug(message + "\n");
 }
 
 void appendFile(fs::FS &fs, const char *path, const char *message) {

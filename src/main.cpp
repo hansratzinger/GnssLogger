@@ -10,6 +10,14 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <branch.h>
+#include "debug.h"
+
+
+// Deklaration der Funktion gpsTask
+void gpsTask(void *pvParameters);
+
+// Deklaration der Funktion processPosition
+void processPosition();
 
 // Define the RX and TX pins for Serial 2
 #define RXD2 16
@@ -98,49 +106,73 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   return distance <= radius;
 }
 
-void processPosition() {   
-  snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
-  snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
 
-  // Bestimme die Himmelsrichtung
-  snprintf(directionLat, sizeof(directionLat), "%c", getDirectionLat(gps.location.lat()));
-  snprintf(directionLng, sizeof(directionLng), "%c", getDirectionLng(gps.location.lng()));
+void setup() {
+  // Serial Monitor
+  Serial.begin(115200);
 
-  snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
-  snprintf(date, sizeof(date), "%04d/%02d/%02d", gps.date.year(), gps.date.month(), gps.date.day());
-  snprintf(hdop, sizeof(hdop), "%.1f", gps.hdop.hdop());
-  snprintf(satellites, sizeof(satellites), "%d", gps.satellites.value());
-  snprintf(speed, sizeof(speed), "%.1f", gps.speed.knots());
-  snprintf(altitude, sizeof(altitude), "%.1f", gps.altitude.meters());
-  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites);
+  // WiFi und Bluetooth ausschalten
+  WiFi.mode(WIFI_OFF);
+  btStop();
 
-  // Berechnung der Distanz zwischen der aktuellen und der letzten Position
-  distanceLast = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
+  // Initialisiere die SD-Karte
+  initializeSDCard();
 
-  // Weitere Verarbeitung und Speicherung der Positionsdaten
-  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%.6f", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites, distanceLast);
-
-  latDifference = calculateDifference(atof(lat), atof(latLast));
-  lonDifference = calculateDifference(atof(lon), atof(lonLast));
-  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f;%.6f", latDifference, lonDifference);
-
-  positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
-  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f\n", positionDifference);
-
-  // Ersetzen von '.' durch ',' in logging
-  for (int i = 0; i < strlen(logging); i++) {
-    if (logging[i] == '.') {
-      logging[i] = ',';
-    }
+  // Überprüfen des Wakeup-Reasons
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  switch (wakeup_reason) {
+    case ESP_SLEEP_WAKEUP_EXT0: 
+      debugPrintln("Wakeup caused by external signal using RTC_IO");
+      break;
+    case ESP_SLEEP_WAKEUP_EXT1: 
+      debugPrintln("Wakeup caused by external signal using RTC_CNTL");
+      break;
+    case ESP_SLEEP_WAKEUP_TIMER: 
+      debugPrintln("Wakeup caused by timer");
+      isWakedUpFromDeepSleep = true;
+      isWakedUpRTC = true; // Setze die RTC-Variable auf true
+      break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD: 
+      debugPrintln("Wakeup caused by touchpad");
+      break;
+    case ESP_SLEEP_WAKEUP_ULP: 
+      debugPrintln("Wakeup caused by ULP program");
+      break;
+    default: 
+      debugPrintln("Wakeup was not caused by deep sleep");
+      break;
   }
 
-  // Debug-Ausgabe
-  Serial.print("new logging: ");
-  Serial.println(logging);
+  // Load data from RTC memory only if waking up from deep sleep
+  if (isWakedUpFromDeepSleep) {
+    strcpy(gpstimeLast, rtcData.gpstimeLast);
+    strcpy(dateLast, rtcData.dateLast);
+    strcpy(latLast, rtcData.latLast);
+    strcpy(lonLast, rtcData.lonLast);
+    isMissionMode = rtcData.isMissionMode;
+    timeDifference = rtcData.timeDifference;
+    loadStationPositionsFromRTC(stationPositions);
+  }
 
-  // Speichern der Daten in der Datei
-  String fileName = generateFileName(gps);
-  appendFile(SD, fileName.c_str(), logging);
+  // Debug-Ausgabe der geladenen Werte
+  debugPrint("LatLast: ");
+  debugPrint(rtcData.latLast);
+  debugPrint(", LonLast: ");
+  debugPrintln(rtcData.lonLast);
+
+  // Initialisiere die LED-Pins
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
+
+  // Erstellen der FreeRTOS-Tasks
+  xTaskCreate(gpsTask, "GPSTask", 4096, NULL, 1, NULL);
+}
+
+void loop() {
+  // Leere Loop-Funktion, da die Logik in FreeRTOS-Tasks ausgelagert wurde
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
 
 void gpsTask(void *pvParameters) {
@@ -260,16 +292,16 @@ void gpsTask(void *pvParameters) {
           strcpy(lonLast, lon);
           
           debugPrintln("Switched to Deep Sleep Mode");
-          Serial.print("gpstimeLast: ");
-          Serial.print(gpstimeLast);
-          Serial.print(", dateLast: ");
-          Serial.print(dateLast);
-          Serial.print(", latLast: ");
-          Serial.print(latLast);
-          Serial.print(", lonLast: ");
-          Serial.print(lonLast);
-          Serial.print(", isMissionMode: ");
-          Serial.println(isMissionMode);
+          debugPrint("gpstimeLast: ");
+          debugPrint(gpstimeLast);
+          debugPrint(", dateLast: ");
+          debugPrint(dateLast);
+          debugPrint(", latLast: ");
+          debugPrint(latLast);
+          debugPrint(", lonLast: ");
+          debugPrint(lonLast);
+          debugPrint(", isMissionMode: ");
+          debugPrintln(isMissionMode);
           vTaskDelay(delayTime / portTICK_PERIOD_MS); // Wartezeit für die LED-Anzeige
 
           // Speichern der Daten im RTC-Speicher
@@ -304,74 +336,4 @@ void gpsTask(void *pvParameters) {
     }
     vTaskDelay(100 / portTICK_PERIOD_MS); // Task-Delay
   }
-}
-
-void setup() {
-  // Serial Monitor
-  Serial.begin(115200);
-
-  // WiFi und Bluetooth ausschalten
-  WiFi.mode(WIFI_OFF);
-  btStop();
-
-  // Initialisiere die SD-Karte
-  initializeSDCard();
-
-  // Überprüfen des Wakeup-Reasons
-  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-  switch (wakeup_reason) {
-    case ESP_SLEEP_WAKEUP_EXT0: 
-      Serial.println("Wakeup caused by external signal using RTC_IO");
-      break;
-    case ESP_SLEEP_WAKEUP_EXT1: 
-      Serial.println("Wakeup caused by external signal using RTC_CNTL");
-      break;
-    case ESP_SLEEP_WAKEUP_TIMER: 
-      Serial.println("Wakeup caused by timer");
-      isWakedUpFromDeepSleep = true;
-      isWakedUpRTC = true; // Setze die RTC-Variable auf true
-      break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD: 
-      Serial.println("Wakeup caused by touchpad");
-      break;
-    case ESP_SLEEP_WAKEUP_ULP: 
-      Serial.println("Wakeup caused by ULP program");
-      break;
-    default: 
-      Serial.println("Wakeup was not caused by deep sleep");
-      break;
-  }
-
-  // Load data from RTC memory only if waking up from deep sleep
-  if (isWakedUpFromDeepSleep) {
-    strcpy(gpstimeLast, rtcData.gpstimeLast);
-    strcpy(dateLast, rtcData.dateLast);
-    strcpy(latLast, rtcData.latLast);
-    strcpy(lonLast, rtcData.lonLast);
-    isMissionMode = rtcData.isMissionMode;
-    timeDifference = rtcData.timeDifference;
-    loadStationPositionsFromRTC(stationPositions);
-  }
-
-  Serial.print("gitBranch: ");
-  Serial.println(GITBRANCH);
-  // Debug-Ausgabe der geladenen Werte
-  Serial.print("LatLast: ");
-  Serial.print(rtcData.latLast);
-  Serial.print(", LonLast: ");
-  Serial.println(rtcData.lonLast);
-
-  // Initialisiere die LED-Pins
-  pinMode(RED_LED_PIN, OUTPUT);
-  pinMode(GREEN_LED_PIN, OUTPUT);
-  digitalWrite(RED_LED_PIN, LOW);
-  digitalWrite(GREEN_LED_PIN, LOW);
-
-  // Erstellen der FreeRTOS-Tasks
-  xTaskCreate(gpsTask, "GPSTask", 4096, NULL, 1, NULL);
-}
-
-void loop() {
-  // Leere Loop-Funktion, da die Logik in FreeRTOS-Tasks ausgelagert wurde
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
