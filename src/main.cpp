@@ -117,7 +117,7 @@ void processPosition() {
   lonDifference = calculateDifference(atof(lon), atof(lonLast));
   snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f;%.6f", latDifference, lonDifference);
 
-  positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast));
+  positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
   snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f\n", positionDifference);
 
   // Ersetzen von '.' durch ',' in logging
@@ -139,16 +139,6 @@ void storePosition() {
     // Datei existiert nicht, erstelle die Datei und schreibe die erste Zeile
     writeFile(SD, fileName.c_str(), firstline);
   }
-  appendFile(SD, fileName.c_str(), logging);
-}
-
-void storePosition() {
-  // Debug-Ausgabe
-  Serial.print("new logging: ");
-  Serial.println(logging);
-
-  // Speichern der Daten in der Datei
-  String fileName = generateFileName(gps);
   appendFile(SD, fileName.c_str(), logging);
 }
 

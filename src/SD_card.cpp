@@ -38,10 +38,18 @@
  * https://github.com/espressif/arduino-esp32/tree/master/libraries/SD
  */
 
-#include "SD.h"
-#include "SPI.h"
+#include <SD.h>
 #include "SD_card.h"
+#include <HardwareSerial.h>
 #include <TinyGPS++.h>
+
+// Deklaration von gpsSerial
+extern HardwareSerial gpsSerial; // Serial 2 verwenden
+
+// Define the RX and TX pins for Serial 2
+#define RXD2 16
+#define TXD2 17
+#define GPS_BAUD 115200
 
 // Funktion zum Schreiben in die Datei debug.txt
 void writeDebug(const String &message) {
