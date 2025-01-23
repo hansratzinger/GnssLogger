@@ -213,6 +213,7 @@ void setup() {
       break;
     default: 
       debugPrintln("Wakeup was not caused by deep sleep");
+      delay(7500);
       break;
   }
 
@@ -310,9 +311,8 @@ void gpsTask(void *pvParameters) {
   }
 
   // Wechsel zwischen Station- und Mission-Modus
+  // filepath: /c:/esp32/GnssLogger/src/main.cpp
   if (isMissionMode) {
-    // Schreibe nur im Mission-Modus auf die SD-Karte
-    // filepath: /c:/esp32/GnssLogger/src/main.cpp
     // Schreibe nur im Mission-Modus auf die SD-Karte
     if (strcmp(date, "2000/00/00") != 0) {
       // Schalte die LEDs entsprechend dem Modus
@@ -356,64 +356,64 @@ void gpsTask(void *pvParameters) {
       }
     }
 
-        // Aktivieren des Light-Sleep-Modus im Mission-Modus
-        enableLightSleep(sleepingTimeLightSleep);
+    // Aktivieren des Light-Sleep-Modus im Mission-Modus
+    enableLightSleep(sleepingTimeLightSleep);
   } else {
-      // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
-      bool outsideDoubleRadius = true;
+    // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
+    bool outsideDoubleRadius = true;
+    for (const auto& pos : stationPositions) {
+      if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, 2 * circleAroundPosition)) {
+        outsideDoubleRadius = false;
+        break;
+      }
+    }
+    if (outsideDoubleRadius) {
+      isMissionMode = true;
+      stationPositions.clear();
+      debugPrintln("Switched to Mission Mode due to position outside double radius");
+    }
+
+    // Aktivieren des Deep-Sleep-Modus im Station-Modus
+    if (stationPositions.size() >= 10) {
+      saveStationPositionsToRTC(stationPositions);
       for (const auto& pos : stationPositions) {
-        if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, 2 * circleAroundPosition)) {
-          outsideDoubleRadius = false;
-          break;
-        }
-      }
-      if (outsideDoubleRadius) {
-        isMissionMode = true;
-        stationPositions.clear();
-        debugPrintln("Switched to Mission Mode due to position outside double radius");
+        snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
+        writeToCSV(logging);
       }
 
-        // Aktivieren des Deep-Sleep-Modus im Station-Modus
-      if (stationPositions.size() >= 5) {
-        saveStationPositionsToRTC(stationPositions);
-        for (const auto& pos : stationPositions) {
-          snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
-          processPosition();
-        }
-        
-        // Save the last values
-        strcpy(gpstimeLast, gpstime);
-        strcpy(dateLast, date);
-        strcpy(latLast, lat);
-        strcpy(lonLast, lon);
-        
-        debugPrintln("Switched to Deep Sleep Mode");
-        debugPrint("gpstimeLast: ");
-        debugPrint(gpstimeLast);
-        debugPrint(", dateLast: ");
-        debugPrint(dateLast);
-        debugPrint(", latLast: ");
-        debugPrint(latLast);
-        debugPrint(", lonLast: ");
-        debugPrint(lonLast);
-        debugPrint(", isMissionMode: ");
-        debugPrintln(isMissionMode);
-        vTaskDelay(delayTime / portTICK_PERIOD_MS); // Wartezeit für die LED-Anzeige
+      // Save the last values
+      strcpy(gpstimeLast, gpstime);
+      strcpy(dateLast, date);
+      strcpy(latLast, lat);
+      strcpy(lonLast, lon);
 
-        // Speichern der Daten im RTC-Speicher
-        strcpy(rtcData.gpstimeLast, gpstimeLast);
-        strcpy(rtcData.dateLast, dateLast);
-        strcpy(rtcData.latLast, latLast);
-        strcpy(rtcData.lonLast, lonLast);
-        rtcData.isMissionMode = isMissionMode;
-        rtcData.timeDifference = timeDifference;
-        enableDeepSleep(sleepingTimeDeepSleep);
-      }
+      debugPrintln("Switched to Deep Sleep Mode");
+      debugPrint("gpstimeLast: ");
+      debugPrint(gpstimeLast);
+      debugPrint(", dateLast: ");
+      debugPrint(dateLast);
+      debugPrint(", latLast: ");
+      debugPrint(latLast);
+      debugPrint(", lonLast: ");
+      debugPrint(lonLast);
+      debugPrint(", isMissionMode: ");
+      debugPrintln(isMissionMode);
+      vTaskDelay(delayTime / portTICK_PERIOD_MS); // Wartezeit für die LED-Anzeige
 
-      // Schalte die LEDs entsprechend dem Modus
-      if (TEST) {
-        blinkMorseCode("R", RED_LED_PIN, 1); // Rote LED blinkt im Station-Modus
-      }
+      // Speichern der Daten im RTC-Speicher
+      strcpy(rtcData.gpstimeLast, gpstimeLast);
+      strcpy(rtcData.dateLast, dateLast);
+      strcpy(rtcData.latLast, latLast);
+      strcpy(rtcData.lonLast, lonLast);
+      rtcData.isMissionMode = isMissionMode;
+      rtcData.timeDifference = timeDifference;
+      enableDeepSleep(sleepingTimeDeepSleep);
+    }
+
+    // Schalte die LEDs entsprechend dem Modus
+    if (TEST) {
+      blinkMorseCode("R", RED_LED_PIN, 1); // Rote LED blinkt im Station-Modus
+    }
   }
 
   // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
