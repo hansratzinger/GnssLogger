@@ -226,16 +226,6 @@ String generateFileName(TinyGPSPlus &gps) {
   return String(fileName);
 }
 
-String getDirectionLat(double latitude) {
-  String latDir = (latitude >= 0) ? "N" : "S";
-  return latDir;
-}
-
-String getDirectionLng(double longitude) {
-  String lonDir = (longitude >= 0) ? "E" : "W";
-  return lonDir;
-}
-
 String convertToDMM(double decimalDegrees) {
   int degrees = (int)decimalDegrees;
   double minutes = (decimalDegrees - degrees) * 60;

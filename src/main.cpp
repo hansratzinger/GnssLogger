@@ -108,6 +108,14 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   return distance <= radius;
 }
 
+String getDirectionLat(double latitude) {
+  return (latitude >= 0) ? "N" : "S";
+}
+
+String getDirectionLng(double longitude) {
+  return (longitude >= 0) ? "E" : "W";
+}
+
 void writeToCSV(const String& data) {
   String fileName = generateFileName(gps);
   File file = SD.open(fileName.c_str(), FILE_APPEND);
@@ -131,8 +139,10 @@ void processPosition() {
   snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
 
   // Bestimme die Himmelsrichtung
-  snprintf(directionLat, sizeof(directionLat), "%c", getDirectionLat(gps.location.lat()));
-  snprintf(directionLng, sizeof(directionLng), "%c", getDirectionLng(gps.location.lng()));
+  String directionLatStr = getDirectionLat(gps.location.lat());
+  String directionLngStr = getDirectionLng(gps.location.lng());
+  snprintf(directionLat, sizeof(directionLat), "%s", directionLatStr.c_str());
+  snprintf(directionLng, sizeof(directionLng), "%s", directionLngStr.c_str());
 
   snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
   snprintf(date, sizeof(date), "%04d/%02d/%02d", gps.date.year(), gps.date.month(), gps.date.day());
