@@ -265,7 +265,8 @@ void gpsTask(void *pvParameters) {
           while (gpsSerial.available() > 0) {
             gps.encode(gpsSerial.read());
           }
-          if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
+          // if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
+          if (gps.location.isUpdated() ) {
             double newLat = gps.location.lat();
             double newLon = gps.location.lng();
             if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
@@ -284,25 +285,62 @@ void gpsTask(void *pvParameters) {
           debugPrintln("Switched to Station Mode");
 
           // Schreibe die Station-Positionen auf die SD-Karte
-          for (const auto& pos : stationPositions) {
-            snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
-            processPosition();
-          }
+     // filepath: /c:/esp32/GnssLogger/src/main.cpp
+// Schreibe die Station-Positionen auf die SD-Karte
+for (const auto& pos : stationPositions) {
+  snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
+
+  // Öffne die Datei im Anhängemodus
+  String fileName = generateFileName(gps);
+  File file = SD.open(fileName.c_str(), FILE_APPEND);
+  if (!file) {
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+
+  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
+  if (file.size() == 0) {
+    file.println(firstline);
+  }
+
+  // Schreibe die Positionsdaten in die Datei
+  file.print(logging);
+  file.close();
+}
         }
       }
 
       // Wechsel zwischen Station- und Mission-Modus
       if (isMissionMode) {
         // Schreibe nur im Mission-Modus auf die SD-Karte
-        if (strcmp(date, "2000/00/00") != 0) {
-          // Schalte die LEDs entsprechend dem Modus
-          if (TEST) {
-            blinkMorseCode("G", GREEN_LED_PIN, 1); // Grüne LED blinkt im Mission-Modus
-          }
-      
-          // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
-          processPosition();
-        }
+        // filepath: /c:/esp32/GnssLogger/src/main.cpp
+// Schreibe nur im Mission-Modus auf die SD-Karte
+if (strcmp(date, "2000/00/00") != 0) {
+  // Schalte die LEDs entsprechend dem Modus
+  if (TEST) {
+    blinkMorseCode("G", GREEN_LED_PIN, 1); // Grüne LED blinkt im Mission-Modus
+  }
+
+  // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
+  processPosition();
+
+  // Öffne die Datei im Anhängemodus
+  String fileName = generateFileName(gps);
+  File file = SD.open(fileName.c_str(), FILE_APPEND);
+  if (!file) {
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+
+  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
+  if (file.size() == 0) {
+    file.println(firstline);
+  }
+
+  // Schreibe die Positionsdaten in die Datei
+  file.print(logging);
+  file.close();
+}
 
         if (millis() - lastSwitchTime >= switchInterval) {
           bool withinRange = false;
