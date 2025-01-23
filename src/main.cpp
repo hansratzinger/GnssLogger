@@ -7,6 +7,9 @@
 #include <Morse_LED.h>
 #include <SD.h>
 #include <SPI.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <branch.h>
 
 // Define the RX and TX pins for Serial 2
 #define RXD2 16
@@ -16,8 +19,6 @@
 // Define the GPIO pins for the LEDs
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
-
-const String BRANCH="dev"; // Branch name
 
 // Deklaration von Variablen
 
@@ -142,6 +143,169 @@ void processPosition() {
   appendFile(SD, fileName.c_str(), logging);
 }
 
+void gpsTask(void *pvParameters) {
+  while (1) {
+    // Read data from the GPS module
+    while (gpsSerial.available() > 0) {
+      gps.encode(gpsSerial.read());
+    }
+    if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
+      // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
+      // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
+      processPosition();
+
+      // Berechne die Zeitdifferenz zwischen gpstime und gpstimeLast
+      if (strlen(gpstimeLast) > 0) {
+        timeDifference = getTimeDifference(gpstime, gpstimeLast);
+        debugPrintln("Time difference: " + String(timeDifference) + " seconds");
+      }
+      if ((timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
+        // Überprüfe, ob die letzte Position lang zurückliegt, zB weil das GPS-Modul neu gestartet wurde 
+        // und die Zeitdifferenz größer als der Schwellenwert ist
+        // Wenn true wird der Mission-Modus aktiviert und der Postionsspeicher geleert
+        // neue Station-Positionen werden am Anfang der Liste hinzugefügt
+        isMissionMode = true;
+        stationPositions.clear();
+        stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
+        
+        // Ermitteln von 10 Positionen für den Station-Mode
+        while (stationPositions.size() < 10) {
+          // Warte auf die nächste gültige Position
+          while (gpsSerial.available() > 0) {
+            gps.encode(gpsSerial.read());
+          }
+          if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
+            double newLat = gps.location.lat();
+            double newLon = gps.location.lng();
+            if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
+              stationPositions.push_back(std::make_pair(newLat, newLon));
+              debugPrintln("Added position to stationPositions: " + String(newLat, 6) + ", " + String(newLon, 6));
+            } else {
+              debugPrintln("Position out of range: " + String(newLat, 6) + ", " + String(newLon, 6));
+              stationPositions.clear();
+              stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
+            }
+          }
+        }
+        
+        if (stationPositions.size() == 10) {
+          isMissionMode = false;
+          debugPrintln("Switched to Station Mode");
+
+          // Schreibe die Station-Positionen auf die SD-Karte
+          for (const auto& pos : stationPositions) {
+            snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
+            processPosition();
+          }
+        }
+      }
+
+      // Wechsel zwischen Station- und Mission-Modus
+      if (isMissionMode) {
+        // Schreibe nur im Mission-Modus auf die SD-Karte
+        if (strcmp(date, "2000/00/00") != 0) {
+          // Schalte die LEDs entsprechend dem Modus
+          if (TEST) {
+            blinkMorseCode("G", GREEN_LED_PIN, 1); // Grüne LED blinkt im Mission-Modus
+          }
+      
+          // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
+          processPosition();
+        }
+
+        if (millis() - lastSwitchTime >= switchInterval) {
+          bool withinRange = false;
+          for (const auto& pos : stationPositions) {
+            if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
+              withinRange = true;
+              break;
+            }
+          }
+          if (withinRange) {
+            isMissionModeRTC = false;
+            lastSwitchTime = millis();
+            debugPrintln("Switched to Station Mode");
+          }
+        }
+
+        // Aktivieren des Light-Sleep-Modus im Mission-Modus
+        enableLightSleep(sleepingTimeLightSleep);
+      } else {
+        // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
+        bool outsideDoubleRadius = true;
+        for (const auto& pos : stationPositions) {
+          if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, 2 * circleAroundPosition)) {
+            outsideDoubleRadius = false;
+            break;
+          }
+        }
+        if (outsideDoubleRadius) {
+          isMissionMode = true;
+          stationPositions.clear();
+          debugPrintln("Switched to Mission Mode due to position outside double radius");
+        }
+
+        // Aktivieren des Deep-Sleep-Modus im Station-Modus
+        if (stationPositions.size() >= 5) {
+          saveStationPositionsToRTC(stationPositions);
+          for (const auto& pos : stationPositions) {
+            snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
+            processPosition();
+          }
+          
+          // Save the last values
+          strcpy(gpstimeLast, gpstime);
+          strcpy(dateLast, date);
+          strcpy(latLast, lat);
+          strcpy(lonLast, lon);
+          
+          debugPrintln("Switched to Deep Sleep Mode");
+          Serial.print("gpstimeLast: ");
+          Serial.print(gpstimeLast);
+          Serial.print(", dateLast: ");
+          Serial.print(dateLast);
+          Serial.print(", latLast: ");
+          Serial.print(latLast);
+          Serial.print(", lonLast: ");
+          Serial.print(lonLast);
+          Serial.print(", isMissionMode: ");
+          Serial.println(isMissionMode);
+          vTaskDelay(delayTime / portTICK_PERIOD_MS); // Wartezeit für die LED-Anzeige
+
+          // Speichern der Daten im RTC-Speicher
+          strcpy(rtcData.gpstimeLast, gpstimeLast);
+          strcpy(rtcData.dateLast, dateLast);
+          strcpy(rtcData.latLast, latLast);
+          strcpy(rtcData.lonLast, lonLast);
+          rtcData.isMissionMode = isMissionMode;
+          rtcData.timeDifference = timeDifference;
+          enableDeepSleep(sleepingTimeDeepSleep);
+        }
+
+        // Schalte die LEDs entsprechend dem Modus
+        if (TEST) {
+          blinkMorseCode("R", RED_LED_PIN, 1); // Rote LED blinkt im Station-Modus
+        }
+      }
+
+      // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
+      stationPositions.push_back({atof(lat), atof(lon)});
+      if (stationPositions.size() > 5) {
+        stationPositions.pop_front();
+      }
+
+      // Speichern der Daten im RTC-Speicher
+      strcpy(rtcData.gpstimeLast, gpstimeLast);
+      strcpy(rtcData.dateLast, dateLast);
+      strcpy(rtcData.latLast, latLast);
+      strcpy(rtcData.lonLast, lonLast);
+      rtcData.isMissionMode = isMissionMode;
+      rtcData.timeDifference = timeDifference;
+    }
+    vTaskDelay(100 / portTICK_PERIOD_MS); // Task-Delay
+  }
+}
+
 void setup() {
   // Serial Monitor
   Serial.begin(115200);
@@ -178,7 +342,6 @@ void setup() {
       break;
   }
 
-
   // Load data from RTC memory only if waking up from deep sleep
   if (isWakedUpFromDeepSleep) {
     strcpy(gpstimeLast, rtcData.gpstimeLast);
@@ -190,6 +353,8 @@ void setup() {
     loadStationPositionsFromRTC(stationPositions);
   }
 
+  Serial.print("gitBranch: ");
+  Serial.println(GITBRANCH);
   // Debug-Ausgabe der geladenen Werte
   Serial.print("LatLast: ");
   Serial.print(rtcData.latLast);
@@ -201,164 +366,12 @@ void setup() {
   pinMode(GREEN_LED_PIN, OUTPUT);
   digitalWrite(RED_LED_PIN, LOW);
   digitalWrite(GREEN_LED_PIN, LOW);
+
+  // Erstellen der FreeRTOS-Tasks
+  xTaskCreate(gpsTask, "GPSTask", 4096, NULL, 1, NULL);
 }
 
 void loop() {
-  // Read data from the GPS module
-  while (gpsSerial.available() > 0) {
-    gps.encode(gpsSerial.read());
-  }
-  if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
-    // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
-    // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
-    processPosition();
-
-    // Berechne die Zeitdifferenz zwischen gpstime und gpstimeLast
-    if (strlen(gpstimeLast) > 0) {
-      timeDifference = getTimeDifference(gpstime, gpstimeLast);
-      debugPrintln("Time difference: " + String(timeDifference) + " seconds");
-    }
-    if ((timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
-      // Überprüfe, ob die letzte Position lang zurückliegt, zB weil das GPS-Modul neu gestartet wurde 
-      // und die Zeitdifferenz größer als der Schwellenwert ist
-      // Wenn true wird der Mission-Modus aktiviert und der Postionsspeicher geleert
-      // neue Station-Positionen werden am Anfang der Liste hinzugefügt
-      isMissionMode = true;
-      stationPositions.clear();
-      stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
-      
-      // Ermitteln von 10 Positionen für den Station-Mode
-      while (stationPositions.size() < 10) {
-        // Warte auf die nächste gültige Position
-        while (gpsSerial.available() > 0) {
-          gps.encode(gpsSerial.read());
-        }
-         if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
-          double newLat = gps.location.lat();
-          double newLon = gps.location.lng();
-          if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
-            stationPositions.push_back(std::make_pair(newLat, newLon));
-            debugPrintln("Added position to stationPositions: " + String(newLat, 6) + ", " + String(newLon, 6));
-          } else {
-            debugPrintln("Position out of range: " + String(newLat, 6) + ", " + String(newLon, 6));
-            stationPositions.clear();
-            stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
-          }
-        }
-      }
-      
-      if (stationPositions.size() == 10) {
-        isMissionMode = false;
-        debugPrintln("Switched to Station Mode");
-
-        // Schreibe die Station-Positionen auf die SD-Karte
-        for (const auto& pos : stationPositions) {
-          snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
-          processPosition();
-        }
-      }
-    }
-
-    // Wechsel zwischen Station- und Mission-Modus
-    if (isMissionMode) {
-      // Schreibe nur im Mission-Modus auf die SD-Karte
-      if (strcmp(date, "2000/00/00") != 0) {
-        // Schalte die LEDs entsprechend dem Modus
-        if (TEST) {
-          blinkMorseCode("G", GREEN_LED_PIN, 1); // Grüne LED blinkt im Mission-Modus
-        }
-    
-        // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
-        processPosition();
-      }
-
-      if (millis() - lastSwitchTime >= switchInterval) {
-        bool withinRange = false;
-        for (const auto& pos : stationPositions) {
-          if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
-            withinRange = true;
-            break;
-          }
-        }
-        if (withinRange) {
-          isMissionModeRTC = false;
-          lastSwitchTime = millis();
-          debugPrintln("Switched to Station Mode");
-        }
-      }
-
-      // Aktivieren des Light-Sleep-Modus im Mission-Modus
-      enableLightSleep(sleepingTimeLightSleep);
-    } else {  // Station-Modus
-      // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
-      bool outsideDoubleRadius = true;
-      for (const auto& pos : stationPositions) {
-        if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, 2 * circleAroundPosition)) {
-          outsideDoubleRadius = false;
-          break;
-        }
-      }
-      if (outsideDoubleRadius) {
-        isMissionMode = true;
-        stationPositions.clear();
-        debugPrintln("Switched to Mission Mode due to position outside double radius");
-      }
-
-      // Aktivieren des Deep-Sleep-Modus im Station-Modus
-      if (stationPositions.size() >= 5) {
-        saveStationPositionsToRTC(stationPositions);
-        for (const auto& pos : stationPositions) {
-          snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
-          processPosition();
-        }
-        
-        // Save the last values
-        strcpy(gpstimeLast, gpstime);
-        strcpy(dateLast, date);
-        strcpy(latLast, lat);
-        strcpy(lonLast, lon);
-        
-        debugPrintln("Switched to Deep Sleep Mode");
-        Serial.print("gpstimeLast: ");
-        Serial.print(gpstimeLast);
-        Serial.print(", dateLast: ");
-        Serial.print(dateLast);
-        Serial.print(", latLast: ");
-        Serial.print(latLast);
-        Serial.print(", lonLast: ");
-        Serial.print(lonLast);
-        Serial.print(", isMissionMode: ");
-        Serial.println(isMissionMode);
-        delay(delayTime); // Wartezeit für die LED-Anzeige
-
-        // Speichern der Daten im RTC-Speicher
-        strcpy(rtcData.gpstimeLast, gpstimeLast);
-        strcpy(rtcData.dateLast, dateLast);
-        strcpy(rtcData.latLast, latLast);
-        strcpy(rtcData.lonLast, lonLast);
-        rtcData.isMissionMode = isMissionMode;
-        rtcData.timeDifference = timeDifference;
-        enableDeepSleep(sleepingTimeDeepSleep);
-      }
-
-      // Schalte die LEDs entsprechend dem Modus
-      if (TEST) {
-        blinkMorseCode("R", RED_LED_PIN, 1); // Rote LED blinkt im Station-Modus
-      }
-    }
-
-    // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
-    stationPositions.push_back({atof(lat), atof(lon)});
-    if (stationPositions.size() > 5) {
-      stationPositions.pop_front();
-    }
-
-    // Speichern der Daten im RTC-Speicher
-    strcpy(rtcData.gpstimeLast, gpstimeLast);
-    strcpy(rtcData.dateLast, dateLast);
-    strcpy(rtcData.latLast, latLast);
-    strcpy(rtcData.lonLast, lonLast);
-    rtcData.isMissionMode = isMissionMode;
-    rtcData.timeDifference = timeDifference;
-  }
+  // Leere Loop-Funktion, da die Logik in FreeRTOS-Tasks ausgelagert wurde
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
