@@ -108,6 +108,24 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   return distance <= radius;
 }
 
+void writeToCSV(const String& data) {
+  String fileName = generateFileName(gps);
+  File file = SD.open(fileName.c_str(), FILE_APPEND);
+  if (!file) {
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+
+  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
+  if (file.size() == 0) {
+    file.println(firstline);
+  }
+
+  // Schreibe die übergebenen Daten in die Datei
+  file.println(data);
+  file.close();
+}
+
 void processPosition() {
   snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
   snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
@@ -135,7 +153,7 @@ void processPosition() {
   snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f;%.6f", latDifference, lonDifference);
 
   positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
-  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f\n", positionDifference);
+  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f", positionDifference);
 
   // Ersetzen von '.' durch ',' in logging
   for (int i = 0; i < strlen(logging); i++) {
@@ -148,21 +166,8 @@ void processPosition() {
   Serial.print("new logging: ");
   Serial.println(logging);
 
-  // Speichern der Daten in der Datei
-  String fileName = generateFileName(gps);
-  File file = SD.open(fileName.c_str(), FILE_APPEND);
-  if (!file) {
-    Serial.println("Failed to open file for appending");
-    return;
-  }
-
-  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
-  if (file.size() == 0) {
-    file.println(firstline);
-  }
-
-  file.print(logging);
-  file.close();
+  // Aufrufen der zentralen Funktion zum Schreiben in die CSV-Datei
+  writeToCSV(logging);
 }
 
 void setup() {
@@ -283,154 +288,137 @@ void gpsTask(void *pvParameters) {
         if (stationPositions.size() == 10) {
           isMissionMode = false;
           debugPrintln("Switched to Station Mode");
-
-          // Schreibe die Station-Positionen auf die SD-Karte
-     // filepath: /c:/esp32/GnssLogger/src/main.cpp
-// Schreibe die Station-Positionen auf die SD-Karte
-for (const auto& pos : stationPositions) {
-  snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
-
-  // Öffne die Datei im Anhängemodus
-  String fileName = generateFileName(gps);
-  File file = SD.open(fileName.c_str(), FILE_APPEND);
-  if (!file) {
-    Serial.println("Failed to open file for appending");
-    return;
-  }
-
-  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
-  if (file.size() == 0) {
-    file.println(firstline);
-  }
-
-  // Schreibe die Positionsdaten in die Datei
-  file.print(logging);
-  file.close();
-}
+        }    
+        // Schreibe die Station-Positionen auf die SD-Karte
+        for (const auto& pos : stationPositions) {
+        snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
+        // Aufrufen der zentralen Funktion zum Schreiben in die CSV-Datei
+        writeToCSV(logging);
         }
       }
-
-      // Wechsel zwischen Station- und Mission-Modus
-      if (isMissionMode) {
-        // Schreibe nur im Mission-Modus auf die SD-Karte
-        // filepath: /c:/esp32/GnssLogger/src/main.cpp
-// Schreibe nur im Mission-Modus auf die SD-Karte
-if (strcmp(date, "2000/00/00") != 0) {
-  // Schalte die LEDs entsprechend dem Modus
-  if (TEST) {
-    blinkMorseCode("G", GREEN_LED_PIN, 1); // Grüne LED blinkt im Mission-Modus
+    }
   }
 
-  // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
-  processPosition();
+  // Wechsel zwischen Station- und Mission-Modus
+  if (isMissionMode) {
+    // Schreibe nur im Mission-Modus auf die SD-Karte
+    // filepath: /c:/esp32/GnssLogger/src/main.cpp
+    // Schreibe nur im Mission-Modus auf die SD-Karte
+    if (strcmp(date, "2000/00/00") != 0) {
+      // Schalte die LEDs entsprechend dem Modus
+      if (TEST) {
+        blinkMorseCode("G", GREEN_LED_PIN, 1); // Grüne LED blinkt im Mission-Modus
+      }
 
-  // Öffne die Datei im Anhängemodus
-  String fileName = generateFileName(gps);
-  File file = SD.open(fileName.c_str(), FILE_APPEND);
-  if (!file) {
-    Serial.println("Failed to open file for appending");
-    return;
-  }
+      // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
+      processPosition();
 
-  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
-  if (file.size() == 0) {
-    file.println(firstline);
-  }
+      // Öffne die Datei im Anhängemodus
+      String fileName = generateFileName(gps);
+      File file = SD.open(fileName.c_str(), FILE_APPEND);
+      if (!file) {
+        Serial.println("Failed to open file for appending");
+        return;
+      }
 
-  // Schreibe die Positionsdaten in die Datei
-  file.print(logging);
-  file.close();
-}
+      // Schreibe die erste Zeile, falls die Datei neu erstellt wird
+      if (file.size() == 0) {
+        file.println(firstline);
+      }
 
-        if (millis() - lastSwitchTime >= switchInterval) {
-          bool withinRange = false;
-          for (const auto& pos : stationPositions) {
-            if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
-              withinRange = true;
-              break;
-            }
-          }
-          if (withinRange) {
-            isMissionModeRTC = false;
-            lastSwitchTime = millis();
-            debugPrintln("Switched to Station Mode");
-          }
+      // Schreibe die Positionsdaten in die Datei
+      file.println(logging);
+      file.close();
+    }
+
+    if (millis() - lastSwitchTime >= switchInterval) {
+      bool withinRange = false;
+      for (const auto& pos : stationPositions) {
+        if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
+          withinRange = true;
+          break;
         }
+      }
+      if (withinRange) {
+        isMissionModeRTC = false;
+        lastSwitchTime = millis();
+        debugPrintln("Switched to Station Mode");
+      }
+    }
 
         // Aktivieren des Light-Sleep-Modus im Mission-Modus
         enableLightSleep(sleepingTimeLightSleep);
-      } else {
-        // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
-        bool outsideDoubleRadius = true;
-        for (const auto& pos : stationPositions) {
-          if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, 2 * circleAroundPosition)) {
-            outsideDoubleRadius = false;
-            break;
-          }
+  } else {
+      // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
+      bool outsideDoubleRadius = true;
+      for (const auto& pos : stationPositions) {
+        if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, 2 * circleAroundPosition)) {
+          outsideDoubleRadius = false;
+          break;
         }
-        if (outsideDoubleRadius) {
-          isMissionMode = true;
-          stationPositions.clear();
-          debugPrintln("Switched to Mission Mode due to position outside double radius");
-        }
+      }
+      if (outsideDoubleRadius) {
+        isMissionMode = true;
+        stationPositions.clear();
+        debugPrintln("Switched to Mission Mode due to position outside double radius");
+      }
 
         // Aktivieren des Deep-Sleep-Modus im Station-Modus
-        if (stationPositions.size() >= 5) {
-          saveStationPositionsToRTC(stationPositions);
-          for (const auto& pos : stationPositions) {
-            snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
-            processPosition();
-          }
-          
-          // Save the last values
-          strcpy(gpstimeLast, gpstime);
-          strcpy(dateLast, date);
-          strcpy(latLast, lat);
-          strcpy(lonLast, lon);
-          
-          debugPrintln("Switched to Deep Sleep Mode");
-          debugPrint("gpstimeLast: ");
-          debugPrint(gpstimeLast);
-          debugPrint(", dateLast: ");
-          debugPrint(dateLast);
-          debugPrint(", latLast: ");
-          debugPrint(latLast);
-          debugPrint(", lonLast: ");
-          debugPrint(lonLast);
-          debugPrint(", isMissionMode: ");
-          debugPrintln(isMissionMode);
-          vTaskDelay(delayTime / portTICK_PERIOD_MS); // Wartezeit für die LED-Anzeige
-
-          // Speichern der Daten im RTC-Speicher
-          strcpy(rtcData.gpstimeLast, gpstimeLast);
-          strcpy(rtcData.dateLast, dateLast);
-          strcpy(rtcData.latLast, latLast);
-          strcpy(rtcData.lonLast, lonLast);
-          rtcData.isMissionMode = isMissionMode;
-          rtcData.timeDifference = timeDifference;
-          enableDeepSleep(sleepingTimeDeepSleep);
+      if (stationPositions.size() >= 5) {
+        saveStationPositionsToRTC(stationPositions);
+        for (const auto& pos : stationPositions) {
+          snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
+          processPosition();
         }
+        
+        // Save the last values
+        strcpy(gpstimeLast, gpstime);
+        strcpy(dateLast, date);
+        strcpy(latLast, lat);
+        strcpy(lonLast, lon);
+        
+        debugPrintln("Switched to Deep Sleep Mode");
+        debugPrint("gpstimeLast: ");
+        debugPrint(gpstimeLast);
+        debugPrint(", dateLast: ");
+        debugPrint(dateLast);
+        debugPrint(", latLast: ");
+        debugPrint(latLast);
+        debugPrint(", lonLast: ");
+        debugPrint(lonLast);
+        debugPrint(", isMissionMode: ");
+        debugPrintln(isMissionMode);
+        vTaskDelay(delayTime / portTICK_PERIOD_MS); // Wartezeit für die LED-Anzeige
 
-        // Schalte die LEDs entsprechend dem Modus
-        if (TEST) {
-          blinkMorseCode("R", RED_LED_PIN, 1); // Rote LED blinkt im Station-Modus
-        }
+        // Speichern der Daten im RTC-Speicher
+        strcpy(rtcData.gpstimeLast, gpstimeLast);
+        strcpy(rtcData.dateLast, dateLast);
+        strcpy(rtcData.latLast, latLast);
+        strcpy(rtcData.lonLast, lonLast);
+        rtcData.isMissionMode = isMissionMode;
+        rtcData.timeDifference = timeDifference;
+        enableDeepSleep(sleepingTimeDeepSleep);
       }
 
-      // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
-      stationPositions.push_back({atof(lat), atof(lon)});
-      if (stationPositions.size() > 5) {
-        stationPositions.pop_front();
+      // Schalte die LEDs entsprechend dem Modus
+      if (TEST) {
+        blinkMorseCode("R", RED_LED_PIN, 1); // Rote LED blinkt im Station-Modus
       }
-
-      // Speichern der Daten im RTC-Speicher
-      strcpy(rtcData.gpstimeLast, gpstimeLast);
-      strcpy(rtcData.dateLast, dateLast);
-      strcpy(rtcData.latLast, latLast);
-      strcpy(rtcData.lonLast, lonLast);
-      rtcData.isMissionMode = isMissionMode;
-      rtcData.timeDifference = timeDifference;
-    }
-    vTaskDelay(100 / portTICK_PERIOD_MS); // Task-Delay
   }
+
+  // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
+  stationPositions.push_back({atof(lat), atof(lon)});
+  if (stationPositions.size() > 5) {
+    stationPositions.pop_front();
+  }
+
+  // Speichern der Daten im RTC-Speicher
+  strcpy(rtcData.gpstimeLast, gpstimeLast);
+  strcpy(rtcData.dateLast, dateLast);
+  strcpy(rtcData.latLast, latLast);
+  strcpy(rtcData.lonLast, lonLast);
+  rtcData.isMissionMode = isMissionMode;
+  rtcData.timeDifference = timeDifference;
+    
+  vTaskDelay(100 / portTICK_PERIOD_MS); // Task-Delay
 }
