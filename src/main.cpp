@@ -33,7 +33,7 @@ const int GREEN_LED_PIN = 26; // mission mode
 unsigned long lastSwitchTime = 0, timeDifference = 0;
 double positionDifference = 0.0;
 char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "", logging[100] = "";
-char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";  
+char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstline[100] = "";  
 double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
 bool isMissionMode = true;
 bool isWakedUp = false;
@@ -69,6 +69,7 @@ const double positionDifferenceTreshold = 5; // in meter
 const unsigned long timeToLastPositionTreshold = 20; // Zeitdifferenz-Schwellenwert in Sekunden
 const unsigned long delayTime = 500; // LED blink delay time
 
+// filepath: /c:/esp32/GnssLogger/src/main.cpp
 const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff;Distance/m\n";
 
 // The TinyGPS++ object
@@ -105,6 +106,64 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   debugPrintln("Radius: " + String(radius) + " meters");
   return distance <= radius;
 }
+
+void processPosition() {   // Funktion zur Verarbeitung der Positionsdaten
+  snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
+  snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
+
+  // Bestimme die Himmelsrichtung
+  snprintf(directionLat, sizeof(directionLat), "%c", getDirectionLat(gps.location.lat()));
+  snprintf(directionLng, sizeof(directionLng), "%c", getDirectionLng(gps.location.lng()));
+
+  snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
+  snprintf(date, sizeof(date), "%04d/%02d/%02d", gps.date.year(), gps.date.month(), gps.date.day());
+  snprintf(hdop, sizeof(hdop), "%.1f", gps.hdop.hdop());
+  snprintf(satellites, sizeof(satellites), "%d", gps.satellites.value());
+  snprintf(speed, sizeof(speed), "%.1f", gps.speed.knots());
+  snprintf(altitude, sizeof(altitude), "%.1f", gps.altitude.meters());
+  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites);
+
+  // Berechnung der Distanz zwischen der aktuellen und der letzten Position
+  distanceLast = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
+
+  // Weitere Verarbeitung und Speicherung der Positionsdaten
+  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%.6f", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites, distanceLast);
+
+  latDifference = calculateDifference(atof(lat), atof(latLast));
+  lonDifference = calculateDifference(atof(lon), atof(lonLast));
+  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f;%.6f", latDifference, lonDifference);
+
+  positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
+  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f\n", positionDifference);
+
+  // Ersetzen von '.' durch ',' in logging
+  for (int i = 0; i < strlen(logging); i++) {
+    if (logging[i] == '.') {
+      logging[i] = ',';
+    }
+  }
+
+  // Debug-Ausgabe
+  Serial.print("new logging: ");
+  Serial.println(logging);
+
+  // Speichern der Daten in der Datei
+  String fileName = generateFileName(gps);
+  File file = SD.open(fileName.c_str(), FILE_APPEND);
+  if (!file) {
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+
+  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
+  if (file.size() == 0) {
+    file.println(firstline);
+  }
+
+  file.print(logging);
+  file.close();
+}
+
 
 
 void setup() {

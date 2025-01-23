@@ -3,6 +3,7 @@
 
 #include "FS.h"
 #include <Arduino.h>
+include <TinyGPS++.h>
 
 extern const bool TEST; // Deklaration der Konstante TEST
 
@@ -21,5 +22,9 @@ void initializeSDCard();
 // Wrapper-Funktion für Serial.print
 void debugPrint(const String &message);
 void debugPrintln(const String &message);
+
+String generateFileName(TinyGPSPlus &gps);
+
+extern const char firstline[];
 
 #endif // SD_CARD_H

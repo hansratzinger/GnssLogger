@@ -42,6 +42,7 @@
 #include "SD_card.h"
 #include <HardwareSerial.h>
 #include <TinyGPS++.h>
+#include <TinyGPSPlus.h>
 #include "debug.h"
 
 // Deklaration von gpsSerial
@@ -51,6 +52,12 @@ extern HardwareSerial gpsSerial; // Serial 2 verwenden
 #define RXD2 16
 #define TXD2 17
 #define GPS_BAUD 115200
+
+String generateFileName(TinyGPSPlus &gps) {
+  char fileName[32];
+  snprintf(fileName, sizeof(fileName), "/log_%04d_%02d_%02d.csv", gps.date.year(), gps.date.month(), gps.date.day());
+  return String(fileName);
+}
 
 // Funktion zum Schreiben in die Datei debug.txt
 void writeDebug(const String &message) {
@@ -179,77 +186,21 @@ void deleteFile(fs::FS &fs, const char *path) {
   }
 }
 
-void testFileIO(fs::FS &fs, const char *path) {
-  File file = fs.open(path);
-  static uint8_t buf[512];
-  size_t len = 0;
-  uint32_t start = millis();
-  uint32_t end = start;
-  if (file) {
-    len = file.size();
-    size_t flen = len;
-    start = millis();
-    while (len) {
-      size_t toRead = len;
-      if (toRead > 512) {
-        toRead = 512;
-      }
-      file.read(buf, toRead);
-      len -= toRead;
-    }
-    end = millis() - start;
-    Serial.printf("%u bytes read for %lu ms\n", flen, end);
-    file.close();
-  } else {
-    Serial.println("Failed to open file for reading");
-  }
+void writeCreationAndModificationDate(fs::FS &fs, TinyGPSPlus &gps) {
+  // Verwende generateFileName, um den Dateinamen zu generieren
+  String fileName = generateFileName(gps);
 
-  file = fs.open(path, FILE_WRITE);
-  if (!file) {
-    Serial.println("Failed to open file for writing");
-    return;
-  }
-
-  size_t i;
-  start = millis();
-  for (i = 0; i < 2048; i++) {
-    file.write(buf, 512);
-  }
-  end = millis() - start;
-  Serial.printf("%u bytes written for %lu ms\n", 2048 * 512, end);
-  file.close();
-}
-
-String generateFileName(TinyGPSPlus &gps) {
-  char fileName[32];
-  snprintf(fileName, sizeof(fileName), "/log_%04d_%02d_%02d.csv", gps.date.year(), gps.date.month(), gps.date.day());
-  return String(fileName);
-}
-
-String getDirectionLat(double latitude) {
-  String latDir = (latitude >= 0) ? "N" : "S";
-  return latDir;
-}
-
-String getDirectionLng(double longitude) {
-  String lonDir = (longitude >= 0) ? "E" : "W";
-  return lonDir;
-}
-
-String convertToDMM(double decimalDegrees) {
-  int degrees = (int)decimalDegrees;
-  double minutes = (decimalDegrees - degrees) * 60;
-  char buffer[20];
-  snprintf(buffer, sizeof(buffer), "%d°%.6f'", degrees, minutes);
-  return String(buffer);
-}
-
-void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus &gps) {
-  File file = fs.open(path, FILE_APPEND);
+  File file = fs.open(fileName.c_str(), FILE_APPEND);
   if (!file) {
     Serial.println("Failed to open file for appending");
     return;
   }
+
+  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
+  if (file.size() == 0) {
+    file.println(firstline);
+  }
+
   String creationDate = "Creation Date: " + String(gps.date.year()) + "/" + String(gps.date.month()) + "/" + String(gps.date.day()) + " " + String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()) + "\n";
   String modificationDate = "Modification Date: " + String(gps.date.year()) + "/" + String(gps.date.month()) + "/" + String(gps.date.day()) + " " + String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()) + "\n";
   if (file.print(creationDate) && file.print(modificationDate)) {
