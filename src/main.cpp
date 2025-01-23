@@ -17,6 +17,10 @@
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
+const String BRANCH="dev"; // Branch name
+
+// Deklaration von Variablen
+
 unsigned long lastSwitchTime = 0, timeDifference = 0;
 double positionDifference = 0.0;
 char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "", logging[100] = "";
