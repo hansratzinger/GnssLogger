@@ -239,7 +239,8 @@ void gpsTask(void *pvParameters) {
     while (gpsSerial.available() > 0) {
       gps.encode(gpsSerial.read());
     }
-    if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
+    // if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
+    if (gps.location.isUpdated()) {
       // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
       // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
       processPosition();
