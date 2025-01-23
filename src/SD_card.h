@@ -3,6 +3,7 @@
 
 #include "FS.h"
 #include <Arduino.h>
+#include <TinyGPS++.h> // Einbinden der Header-Datei für TinyGPSPlus
 
 extern const bool TEST; // Deklaration der Konstante TEST
 
@@ -17,6 +18,8 @@ void deleteFile(fs::FS &fs, const char *path);
 void testFileIO(fs::FS &fs, const char *path);
 void writeDebug(const String &message);
 void initializeSDCard();
+void writeCreationAndModificationDate(fs::FS &fs, TinyGPSPlus &gps);
+String generateFileName(TinyGPSPlus &gps);
 
 // Wrapper-Funktion für Serial.print
 void debugPrint(const String &message);

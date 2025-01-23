@@ -71,6 +71,8 @@ const unsigned long delayTime = 500; // LED blink delay time
 
 const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff;Distance/m\n";
 
+void processPosition();
+
 // The TinyGPS++ object
 TinyGPSPlus gps;
 
@@ -106,6 +108,62 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   return distance <= radius;
 }
 
+void processPosition() {
+  snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
+  snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
+
+  // Bestimme die Himmelsrichtung
+  snprintf(directionLat, sizeof(directionLat), "%c", getDirectionLat(gps.location.lat()));
+  snprintf(directionLng, sizeof(directionLng), "%c", getDirectionLng(gps.location.lng()));
+
+  snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
+  snprintf(date, sizeof(date), "%04d/%02d/%02d", gps.date.year(), gps.date.month(), gps.date.day());
+  snprintf(hdop, sizeof(hdop), "%.1f", gps.hdop.hdop());
+  snprintf(satellites, sizeof(satellites), "%d", gps.satellites.value());
+  snprintf(speed, sizeof(speed), "%.1f", gps.speed.knots());
+  snprintf(altitude, sizeof(altitude), "%.1f", gps.altitude.meters());
+  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites);
+
+  // Berechnung der Distanz zwischen der aktuellen und der letzten Position
+  distanceLast = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
+
+  // Weitere Verarbeitung und Speicherung der Positionsdaten
+  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%.6f", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites, distanceLast);
+
+  latDifference = calculateDifference(atof(lat), atof(latLast));
+  lonDifference = calculateDifference(atof(lon), atof(lonLast));
+  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f;%.6f", latDifference, lonDifference);
+
+  positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
+  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f\n", positionDifference);
+
+  // Ersetzen von '.' durch ',' in logging
+  for (int i = 0; i < strlen(logging); i++) {
+    if (logging[i] == '.') {
+      logging[i] = ',';
+    }
+  }
+
+  // Debug-Ausgabe
+  Serial.print("new logging: ");
+  Serial.println(logging);
+
+  // Speichern der Daten in der Datei
+  String fileName = generateFileName(gps);
+  File file = SD.open(fileName.c_str(), FILE_APPEND);
+  if (!file) {
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+
+  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
+  if (file.size() == 0) {
+    file.println(firstline);
+  }
+
+  file.print(logging);
+  file.close();
+}
 
 void setup() {
   // Serial Monitor
