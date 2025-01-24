@@ -56,7 +56,7 @@ const double circleAroundPosition = 15.0; // Radius in Metern
 const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
 const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
 const double hdopTreshold = 1; // HDOP-Schwellenwert
-const double positionDifferenceTreshold = 5; // in meter
+
 const unsigned long timeToLastPositionTreshold = 20; // Zeitdifferenz-Schwellenwert in Sekunden
 const unsigned long delayTime = 500; // LED blink delay time
 
@@ -92,8 +92,13 @@ unsigned long getTimeDifference(const char *gpstime, const char *gpstimeLast) {
 // Funktion zur Überprüfung, ob eine Position innerhalb eines bestimmten Radius liegt
 bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double radius) {
   double distance = calculateDistance(lat1, lon1, lat2, lon2);
-  debugPrintln("Distance: " + String(distance) + " meters");
-  debugPrintln("Radius: " + String(radius) + " meters");
+  debugPrint("Distance: " + String(distance) + " meters");
+  debugPrint(" Radius: " + String(radius) + " meters");
+  debugPrint("Lat: " + String(lat1));
+  debugPrint("Lon: " + String(lat1));
+  debugPrint("LatLast: " + String(lat2));
+  debugPrintln("LonLast: " + String(lon2));
+  
   return distance <= radius;
 }
 
@@ -102,11 +107,14 @@ void processPosition() {
   snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
 
   // Bestimme die Himmelsrichtung
-  snprintf(directionLat, sizeof(directionLat), "%c", getDirectionLat(gps.location.lat()));
-  snprintf(directionLng, sizeof(directionLng), "%c", getDirectionLng(gps.location.lng()));
+// filepath: /c:/esp32/GnssLogger/src/main.cpp
+char directionLatChar = getDirectionOfLat(gps.location.lat());
+char directionLngChar = getDirectionOfLng(gps.location.lng());
+snprintf(directionLat, sizeof(directionLat), "%c", directionLatChar);
+snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
 
   snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
-  snprintf(date, sizeof(date), "%04d/%02d/%02d", gps.date.year(), gps.date.month(), gps.date.day());
+  snprintf(date, sizeof(date), "%04d-%02d-%02d", gps.date.year(), gps.date.month(), gps.date.day());
   snprintf(hdop, sizeof(hdop), "%.1f", gps.hdop.hdop());
   snprintf(satellites, sizeof(satellites), "%d", gps.satellites.value());
   snprintf(speed, sizeof(speed), "%.1f", gps.speed.knots());
@@ -117,7 +125,7 @@ void processPosition() {
   distanceLast = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
 
   // Weitere Verarbeitung und Speicherung der Positionsdaten
-  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%.6f", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites, distanceLast);
+  // snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%.6f", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites, distanceLast);
 
   latDifference = calculateDifference(atof(lat), atof(latLast));
   lonDifference = calculateDifference(atof(lon), atof(lonLast));
@@ -126,7 +134,7 @@ void processPosition() {
   positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
   snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f\n", positionDifference);
 
-  // Ersetzen von '.' durch ',' in logging
+  // Ersetzen von '.' durch ',' in logging um Zahlen in die CSV-Datei zu schreiben
   for (int i = 0; i < strlen(logging); i++) {
     if (logging[i] == '.') {
       logging[i] = ',';
@@ -140,6 +148,9 @@ void processPosition() {
   // Speichern der Daten in der Datei
   String fileName = generateFileName(gps);
   appendFile(SD, fileName.c_str(), logging);
+  // Leeren des logging-Arrays
+  memset(logging, 0, sizeof(logging)); 
+
 }
 
 void setup() {
@@ -210,9 +221,14 @@ void setup() {
 void loop() {
   // Read data from the GPS module
   while (gpsSerial.available() > 0) {
+    static unsigned long lastPositionTime = 0;
     gps.encode(gpsSerial.read());
   }
-  if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
+  unsigned long currentTime = millis();
+  unsigned long lastPositionTime = 0;
+  if (currentTime - lastPositionTime >= 1000) { // Wartezeit von mindestens 1 Sekunde
+    lastPositionTime = currentTime;
+    if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
     // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
     // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
     processPosition();
@@ -220,7 +236,8 @@ void loop() {
     // Berechne die Zeitdifferenz zwischen gpstime und gpstimeLast
     if (strlen(gpstimeLast) > 0) {
       timeDifference = getTimeDifference(gpstime, gpstimeLast);
-      debugPrintln("Time difference: " + String(timeDifference) + " seconds");
+      debugPrint("Time difference: " + String(timeDifference) + " seconds");
+      debugPrintln("timeToLastPositionTreshold: " + String(timeToLastPositionTreshold) + " seconds");
     }
     if ((timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
       // Überprüfe, ob die letzte Position lang zurückliegt, zB weil das GPS-Modul neu gestartet wurde 
@@ -237,7 +254,7 @@ void loop() {
         while (gpsSerial.available() > 0) {
           gps.encode(gpsSerial.read());
         }
-         if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
+        if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
           double newLat = gps.location.lat();
           double newLon = gps.location.lng();
           if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
@@ -254,9 +271,9 @@ void loop() {
       if (stationPositions.size() == 10) {
         isMissionMode = false;
         debugPrintln("Switched to Station Mode");
-
-        // Schreibe die Station-Positionen auf die SD-Karte
-        for (const auto& pos : stationPositions) {
+        // Schreibe nur die erste Position aus stationPositions auf die SD-Karte
+        if (!stationPositions.empty()) {
+          const auto& pos = stationPositions.front();
           snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
           processPosition();
         }
@@ -311,10 +328,10 @@ void loop() {
       // Aktivieren des Deep-Sleep-Modus im Station-Modus
       if (stationPositions.size() >= 5) {
         saveStationPositionsToRTC(stationPositions);
-        for (const auto& pos : stationPositions) {
-          snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
-          processPosition();
-        }
+        // for (const auto& pos : stationPositions) {
+        //   snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
+        //   processPosition();
+        // }
         
         // Save the last values
         strcpy(gpstimeLast, gpstime);
@@ -351,11 +368,11 @@ void loop() {
       }
     }
 
-    // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
-    stationPositions.push_back({atof(lat), atof(lon)});
-    if (stationPositions.size() > 5) {
-      stationPositions.pop_front();
-    }
+    // // Füge die aktuelle Position zur Liste der letzten 5 Positionen hinzu
+    // stationPositions.push_back({atof(lat), atof(lon)});
+    // if (stationPositions.size() > 5) {
+    //   stationPositions.pop_front();
+    // }
 
     // Speichern der Daten im RTC-Speicher
     strcpy(rtcData.gpstimeLast, gpstimeLast);
@@ -364,5 +381,6 @@ void loop() {
     strcpy(rtcData.lonLast, lonLast);
     rtcData.isMissionMode = isMissionMode;
     rtcData.timeDifference = timeDifference;
-  }
+    }
+  } // End of loop min 1 sec
 }

@@ -237,14 +237,13 @@ String generateFileName(TinyGPSPlus &gps) {
   return String(fileName);
 }
 
-String getDirectionLat(double latitude) {
-  String latDir = (latitude >= 0) ? "N" : "S";
-  return latDir;
+// filepath: /c:/esp32/GnssLogger/src/SD_card.cpp
+char getDirectionOfLat(double latitude) {
+  return (latitude >= 0) ? 'N' : 'S';
 }
 
-String getDirectionLng(double longitude) {
-  String lonDir = (longitude >= 0) ? "E" : "W";
-  return lonDir;
+char getDirectionOfLng(double longitude) {
+  return (longitude >= 0) ? 'E' : 'W';
 }
 
 String convertToDMM(double decimalDegrees) {

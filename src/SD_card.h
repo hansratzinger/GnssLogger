@@ -1,7 +1,8 @@
+// filepath: /c:/esp32/GnssLogger/src/SD_card.h
 #ifndef SD_CARD_H
 #define SD_CARD_H
 
-#include "FS.h"
+#include <FS.h>
 #include <Arduino.h>
 
 extern const bool TEST; // Deklaration der Konstante TEST
@@ -22,4 +23,8 @@ void initializeSDCard();
 void debugPrint(const String &message);
 void debugPrintln(const String &message);
 
+char getDirectionOfLat(double latitude);
+char getDirectionOfLng(double longitude);
+
 #endif // SD_CARD_H
+//--------------------------------------------------------------------------
