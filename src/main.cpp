@@ -100,7 +100,7 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   debugPrintln("LonLast: " + String(lon2));
   
   return distance <= radius;
-}
+} 
 
 void processPosition() {   
   snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
@@ -226,7 +226,7 @@ void loop() {
   }
   unsigned long currentTime = millis();
   unsigned long lastPositionTime = 0;
-  if (currentTime - lastPositionTime >= 1000) { // Wartezeit von mindestens 1 Sekunde
+  if (currentTime - lastPositionTime >= 250) { // Wartezeit von mindestens 0,25 Sekunde
     lastPositionTime = currentTime;
     if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
     // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
@@ -244,11 +244,13 @@ void loop() {
       // und die Zeitdifferenz größer als der Schwellenwert ist
       // Wenn true wird der Mission-Modus aktiviert und der Postionsspeicher geleert
       // neue Station-Positionen werden am Anfang der Liste hinzugefügt
+      debugPrintln("Clear stationPositions due to time difference");
       isMissionMode = true;
       stationPositions.clear();
       stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
       
       // Ermitteln von 10 Positionen für den Station-Mode
+      debugPrintln("Building SMM stationPositions");
       while (stationPositions.size() < 10) {
         // Warte auf die nächste gültige Position
         while (gpsSerial.available() > 0) {
