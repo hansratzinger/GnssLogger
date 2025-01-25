@@ -27,15 +27,10 @@ char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15
 char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";  
 double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
 bool isMissionMode = true;
-bool isWakedUp = false;
 bool isWakedUpFromLightSleep = false;
 bool isWakedUpFromDeepSleep = false;
 
 RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
-RTC_DATA_ATTR bool isWakedUpRTC = false, isMissionModeRTC = false, isWakedUpFromDeepSleepRTC = false; 
-RTC_DATA_ATTR char latLastRTC[15] = "", lonLastRTC[15] = "", gpstimeLastRTC[10] = "", dateLastRTC[11] = "";
-RTC_DATA_ATTR unsigned long timeDifferenceRTC = 0;
-
 // Struktur für RTC-Speicher
 struct RtcData {
   char gpstimeLast[10];
@@ -153,6 +148,24 @@ snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
 
 }
 
+void writeToCSV(const String& data) {
+  String fileName = generateFileName(gps);
+  File file = SD.open(fileName.c_str(), FILE_APPEND);
+  if (!file) {
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+
+  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
+  if (file.size() == 0) {
+    file.println(firstline);
+  }
+
+  // Schreibe die übergebenen Daten in die Datei
+  file.println(data);
+  file.close();
+}
+
 void setup() {
   // Serial Monitor
   Serial.begin(115200);
@@ -180,7 +193,6 @@ void setup() {
     case ESP_SLEEP_WAKEUP_TIMER: 
       Serial.println("Wakeup caused by timer");
       isWakedUpFromDeepSleep = true;
-      isWakedUpRTC = true; // Setze die RTC-Variable auf true
       break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD: 
       Serial.println("Wakeup caused by touchpad");
@@ -304,7 +316,7 @@ void loop() {
           }
         }
         if (withinRange) {
-          isMissionModeRTC = false;
+          isMissionMode = false;
           lastSwitchTime = millis();
           debugPrintln("Switched to Station Mode");
         }
