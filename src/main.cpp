@@ -1,3 +1,37 @@
+// ----------------------------------------------------------------------------------------------
+// GNSSLogger  
+// This project uses the ESP32 Dev Module board and a GNSS module to log GPS data to an SD card.
+// The GNSS module is connected to the ESP32 via UART.
+// The ESP32 is put into deep sleep mode when the GNSS module is not in use.
+// The ESP32 wakes up from deep sleep mode every 5 seconds to check the GNSS module for new data.
+// If the GNSS module has new data, the ESP32 processes the data and logs it to an SD card.
+// The ESP32 switches between mission mode and station mode based on the distance between the current position and the last position.
+// In station mode, the ESP32 logs the current position to the SD card and goes into deep sleep mode.
+// In mission mode, the ESP32 checks if the current position is within a certain radius of the station positions.
+// If the current position is within the radius, the ESP32 switches to station mode.
+// If the current position is outside the radius, the ESP32 logs the current position to the SD card and goes into deep sleep mode.
+// The ESP32 uses the RTC memory to store the last position, the last time, and the mode (mission or station).
+// -  the SD card to log the GPS data in CSV format.
+// -  the built-in LED pins to indicate the mode (mission or station) with red and green LEDs.
+// -  the Morse_LED library to blink the LEDs in Morse code.
+// -  the GNSS_module library to process the GPS data.
+// -  the SD_card library to interact with the SD card.
+// -  the Sleep library to manage the sleep modes.
+// -  the TinyGPS++ library to parse the GPS data.
+// -  the WiFi library to turn off WiFi and Bluetooth.
+// -  the SPI library to communicate with the SD card.
+// -  the FS library to interact with the file system.
+// -  the Arduino.h library for general Arduino functions.
+// -  the HardwareSerial library to communicate with the GNSS module.
+// -  the esp_sleep library to manage the sleep modes.
+// -  the deque library to store the station positions.
+// -  the stdio.h library for standard input and output functions.
+// -  the string.h library for string manipulation functions.
+// -  the time.h library for time-related functions.
+// Hans Ratzinger 2025-01-26
+// https://github.com/hansratzinger/GnssLogger
+// ----------------------------------------------------------------------------------------------
+
 #include <esp_sleep.h>
 #include <deque>
 #include <WiFi.h>
@@ -17,7 +51,7 @@
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
-const String BRANCH="sunday"; // Branch name
+const String BRANCH="dev"; // Branch name
 
 // Deklaration von Variablen
 
