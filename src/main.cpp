@@ -17,7 +17,7 @@
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
-const String BRANCH="dev"; // Branch name
+const String BRANCH="sunday"; // Branch name
 
 // Deklaration von Variablen
 
@@ -54,7 +54,7 @@ const double hdopTreshold = 1; // HDOP-Schwellenwert
 
 const unsigned long timeToLastPositionTreshold = 20; // Zeitdifferenz-Schwellenwert in Sekunden
 const unsigned long delayTime = 500; // LED blink delay time
-
+const unsigned long switchTime = 1000; // Zeitdifferenz-Schwellenwert in Sekunden
 const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff;Distance/m\n";
 
 // The TinyGPS++ object
@@ -233,13 +233,13 @@ void setup() {
 void loop() {
   // Read data from the GPS module
   while (gpsSerial.available() > 0) {
-    // static unsigned long lastPositionTime = 0;
+    static unsigned long lastPositionTime = 0;
     gps.encode(gpsSerial.read());
   }
-  // unsigned long currentTime = millis();
-  // unsigned long lastPositionTime = 0;
-  // if (currentTime - lastPositionTime >= 250) { // Wartezeit von mindestens 0,25 Sekunde
-  //   lastPositionTime = currentTime;
+  unsigned long currentTime = millis();
+  unsigned long lastPositionTime = 0;
+  if (currentTime - lastPositionTime >= switchTime) { // Wartezeit von mindestens 0,25 Sekunde
+    lastPositionTime = currentTime;
     if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
     // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
     // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
@@ -289,7 +289,7 @@ void loop() {
         if (!stationPositions.empty()) {
           const auto& pos = stationPositions.front();
           snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
-          processPosition();
+          // processPosition();
         }
       }
     }
@@ -304,7 +304,7 @@ void loop() {
         }
     
         // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
-        processPosition();
+        // processPosition();
       }
 
       if (millis() - lastSwitchTime >= switchInterval) {
@@ -397,4 +397,4 @@ void loop() {
     rtcData.timeDifference = timeDifference;
     }
   } // End of loop min 1 sec
-// }
+}
