@@ -51,7 +51,7 @@
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
-const String BRANCH="dev"; // Branch name
+const String BRANCH="main"; // Branch name
 
 // Deklaration von Variablen
 
