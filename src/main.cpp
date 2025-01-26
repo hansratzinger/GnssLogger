@@ -49,13 +49,13 @@ const bool TEST = true; // Definition der Konstante TEST
 const unsigned long switchInterval = 5000; // 5 Sekunden
 const double circleAroundPosition = 15.0; // Radius in Metern
 const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
-const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
+const unsigned long sleepingTimeDeepSleep = 7; // 5 Sekunden
 const double hdopTreshold = 1; // HDOP-Schwellenwert
 
 const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
 const unsigned long delayTime = 500; // LED blink delay time
 const unsigned long switchTime = 1000; // Zeitdifferenz-Schwellenwert in Sekunden
-const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff;Distance/m\n";
+const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;Mission\n";
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -101,6 +101,18 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   }
 } 
 
+void writeToCSV(const String& data) {
+  // Generiere den Dateinamen basierend auf dem aktuellen Datum
+  String fileName = generateFileName(gps);
+  // Überprüfe, ob die Datei bereits existiert
+  if (!SD.exists(fileName.c_str())) {
+    // Datei existiert nicht, erstelle die Datei und schreibe die erste Zeile
+    writeFile(SD, fileName.c_str(), firstline);
+  }
+  // Schreibe die Daten in die Datei
+  appendFile(SD, fileName.c_str(), logging);
+}
+
 void processPosition() {   
   snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
   snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
@@ -131,7 +143,13 @@ snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
   snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f;%.6f", latDifference, lonDifference);
 
   positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
-  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f\n", positionDifference);
+  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f", positionDifference);
+  
+  if (isMissionMode) {
+  strcat(logging, ";mission\n");
+  } else {
+  strcat(logging, ";station\n");
+  }
 
   // Ersetzen von '.' durch ',' in logging um Zahlen in die CSV-Datei zu schreiben
   for (int i = 0; i < strlen(logging); i++) {
@@ -145,29 +163,12 @@ snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
   Serial.println(logging);
 
   // Speichern der Daten in der Datei
-  String fileName = generateFileName(gps);
-  appendFile(SD, fileName.c_str(), logging);
+  // String fileName = generateFileName(gps);
+  // appendFile(SD, fileName.c_str(), logging);
+  writeToCSV(logging);
+
   // Leeren des logging-Arrays
   memset(logging, 0, sizeof(logging)); 
-
-}
-
-void writeToCSV(const String& data) {
-  String fileName = generateFileName(gps);
-  File file = SD.open(fileName.c_str(), FILE_APPEND);
-  if (!file) {
-    Serial.println("Failed to open file for appending");
-    return;
-  }
-
-  // Schreibe die erste Zeile, falls die Datei neu erstellt wird
-  if (file.size() == 0) {
-    file.println(firstline);
-  }
-
-  // Schreibe die übergebenen Daten in die Datei
-  file.println(data);
-  file.close();
 }
 
 void setup() {
@@ -329,8 +330,8 @@ void loop() {
       for (const auto& pos : stationPositions) {
         debugPrintln("lat: " + String(atof(lat), 6) + ", lon: " + String(atof(lon), 6));
         debugPrintln("Checking position first/second: " + String(pos.first, 6) + ", " + String(pos.second, 6));
-        debugPrintln("circleAroundPosition * 2: " + String(2 * circleAroundPosition));
-        if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, 2 * circleAroundPosition)) {
+        debugPrintln("circleAroundPosition * 2: " + String(circleAroundPosition));
+        if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
           isMissionMode = true;
           stationPositions.clear();
           debugPrintln("Switched to Mission Mode due to position outside double radius");
