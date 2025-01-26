@@ -52,7 +52,7 @@ const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
 const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
 const double hdopTreshold = 1; // HDOP-Schwellenwert
 
-const unsigned long timeToLastPositionTreshold = 20; // Zeitdifferenz-Schwellenwert in Sekunden
+const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
 const unsigned long delayTime = 500; // LED blink delay time
 const unsigned long switchTime = 1000; // Zeitdifferenz-Schwellenwert in Sekunden
 const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff;Distance/m\n";
@@ -89,12 +89,16 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   double distance = calculateDistance(lat1, lon1, lat2, lon2);
   debugPrint("Distance: " + String(distance) + " meters");
   debugPrint(" Radius: " + String(radius) + " meters");
-  debugPrint("Lat: " + String(lat1));
-  debugPrint("Lon: " + String(lat1));
-  debugPrint("LatLast: " + String(lat2));
-  debugPrintln("LonLast: " + String(lon2));
+  debugPrint("Lat: " + String(lat1, 6));
+  debugPrint("Lon: " + String(lat1, 6));
+  debugPrint("LatLast: " + String(lat2, 6));
+  debugPrintln("LonLast: " + String(lon2, 6));
   
-  return distance <= radius;
+  if (distance <= radius) {
+    return true;
+  } else {
+    return false;
+  }
 } 
 
 void processPosition() {   

@@ -273,7 +273,7 @@ void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus 
 void initializeSDCard() {
   // Start Serial 2 with the defined RX and TX pins and a baud rate of 9600
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2);
-  debugPrintln("Serial 2 started at " + String(GPS_BAUD) + " baud rate");
+  Serial.print("Serial 2 started at " + String(GPS_BAUD) + " baud rate");
 
   if (!SD.begin()) {
     debugPrintln("Card Mount Failed");
