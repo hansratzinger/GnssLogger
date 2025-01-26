@@ -289,7 +289,6 @@ void loop() {
         if (!stationPositions.empty()) {
           const auto& pos = stationPositions.front();
           snprintf(logging, sizeof(logging), "%s;%s;%.6f;%s;%.6f;%s;%s;%s;%s;%s;station-mode\n", date, gpstime, pos.first, directionLat, pos.second, directionLng, speed, altitude, hdop, satellites);
-          // processPosition();
         }
       }
     }
@@ -302,11 +301,7 @@ void loop() {
         if (TEST) {
           blinkMorseCode("G", GREEN_LED_PIN, 1); // Grüne LED blinkt im Mission-Modus
         }
-    
-        // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
-        // processPosition();
       }
-
       if (millis() - lastSwitchTime >= switchInterval) {
         bool withinRange = false;
         for (const auto& pos : stationPositions) {
@@ -328,6 +323,9 @@ void loop() {
       // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
       bool outsideDoubleRadius = true;
       for (const auto& pos : stationPositions) {
+        debugPrintln("lat: " + String(atof(lat), 6) + ", lon: " + String(atof(lon), 6));
+        debugPrintln("Checking position first/second: " + String(pos.first, 6) + ", " + String(pos.second, 6));
+        debugPrintln("circleAroundPosition * 2: " + String(2 * circleAroundPosition));
         if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, 2 * circleAroundPosition)) {
           outsideDoubleRadius = false;
           break;
