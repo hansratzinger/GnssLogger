@@ -52,17 +52,29 @@ extern HardwareSerial gpsSerial; // Serial 2 verwenden
 #define GPS_BAUD 115200
 
 // Funktion zum Schreiben in die Datei debug.txt
+// filepath: /c:/esp32/GnssLogger/src/SD_card.cpp
 void writeDebug(const String &message) {
-  if (TEST) {
-      File file = SD.open("/debug.txt", FILE_APPEND);
-    if (file) {
-      file.println(message);
-      file.close();
-    } else {
-      Serial.println("Fehler beim Öffnen der Datei debug.txt");
+  // Überprüfen, ob die Datei existiert
+  if (!SD.exists("/debug.txt")) {
+    // Datei erstellen, falls sie nicht existiert
+    File file = SD.open("/debug.txt", FILE_WRITE);
+    if (!file) {
+      Serial.println("Fehler beim Erstellen der Datei debug.txt");
+      return;
     }
+    file.close();
   }
 
+  // Datei im Anhängemodus öffnen
+  File file = SD.open("/debug.txt", FILE_APPEND);
+  if (!file) {
+    Serial.println("Fehler beim Öffnen der Datei debug.txt");
+    return;
+  }
+
+  // Nachricht in die Datei schreiben
+  file.println(message);
+  file.close();
 }
 
 // Wrapper-Funktion für Serial.print

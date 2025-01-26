@@ -17,14 +17,14 @@
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
-const String BRANCH="dev"; // Branch name
+const String BRANCH="sd-card-firstline"; // Branch name
 
 // Deklaration von Variablen
-unsigned long lastPositionTime = 0;
+
 unsigned long lastSwitchTime = 0, timeDifference = 0;
 double positionDifference = 0.0;
-char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "",  course[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "", logging[100] = "";
-char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", courseLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";  
+char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "", logging[100] = "";
+char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", course[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";  
 double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
 bool isMissionMode = true;
 bool isWakedUpFromLightSleep = false;
@@ -55,7 +55,7 @@ const double hdopTreshold = 1; // HDOP-Schwellenwert
 const unsigned long timeToLastPositionTreshold = 20; // Zeitdifferenz-Schwellenwert in Sekunden
 const unsigned long delayTime = 500; // LED blink delay time
 
-const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;course;alt/m;hdop;satellites;Fix-distance/m;LatDiff;LonDiff;Distance/m\n";
+const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;course;Alt/m;HDOP;Satellites;Fix-distance/m;LatDiff;LonDiff;Distance/m\n";
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -89,10 +89,10 @@ bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double ra
   double distance = calculateDistance(lat1, lon1, lat2, lon2);
   debugPrint("Distance: " + String(distance) + " meters");
   debugPrint(" Radius: " + String(radius) + " meters");
-  debugPrint("Lat: " + String(lat1));
-  debugPrint("Lon: " + String(lat1));
-  debugPrint("LatLast: " + String(lat2));
-  debugPrintln("LonLast: " + String(lon2));
+  debugPrint("Lat: " + String(lat1,6));
+  debugPrint("Lon: " + String(lat1,6));
+  debugPrint("LatLast: " + String(lat2,6));
+  debugPrintln("LonLast: " + String(lon2,6));
   
   return distance <= radius;
 } 
@@ -130,10 +130,10 @@ snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
   snprintf(date, sizeof(date), "%04d-%02d-%02d", gps.date.year(), gps.date.month(), gps.date.day());
   snprintf(hdop, sizeof(hdop), "%.1f", gps.hdop.hdop());
   snprintf(satellites, sizeof(satellites), "%d", gps.satellites.value());
-  snprintf(course, sizeof(course), "%.1f", gps.course.deg());
   snprintf(speed, sizeof(speed), "%.1f", gps.speed.knots());
+  snprintf(course, sizeof(course), "%.1f", gps.course.deg());
   snprintf(altitude, sizeof(altitude), "%.1f", gps.altitude.meters());
-  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites);
+  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s", date, gpstime, atof(lat), directionLat, atof(lon), directionLng, atof(speed), atof(altitude), atof(hdop), atof(satellites));
 
   // Berechnung der Distanz zwischen der aktuellen und der letzten Position
   distanceLast = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
@@ -160,68 +160,35 @@ snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
   Serial.println(logging);
 
   // Speichern der Daten in der Datei
-  String fileName = generateFileName(gps);
-  appendFile(SD, fileName.c_str(), logging);
+  // String fileName = generateFileName(gps);
+  // appendFile(SD, fileName.c_str(), logging);
+
+  // Schreiben der Daten in die CSV-Datei
+  writeToCSV(logging);
+
   // Leeren des logging-Arrays
   memset(logging, 0, sizeof(logging)); 
+
 }
 
 void setup() {
-  // Initialisierung der seriellen Schnittstelle
+  // Serial Monitor
   Serial.begin(115200);
 
-
-  delay(10000);
   // WiFi und Bluetooth ausschalten
   WiFi.mode(WIFI_OFF);
   btStop();
-  debugPrintln("WiFi and Bluetooth turned off");
 
   // Reduzieren der Clock-Rate auf 80 MHz
   setCpuFrequencyMhz(80);
   Serial.println("CPU frequency set to 80 MHz");
 
   // Initialisiere die SD-Karte
-  if (!SD.begin()) {
-    Serial.println("Card Mount Failed");
-    return;
-  }
-  uint8_t cardType = SD.cardType();
-  if (cardType == CARD_NONE) {
-    Serial.println("No SD card attached");
-    return;
-  }
+  initializeSDCard();
 
-  Serial.print("SD Card Type: ");
-  if (cardType == CARD_MMC) {
-    Serial.println("MMC");
-  } else if (cardType == CARD_SD) {
-    Serial.println("SDSC");
-  } else if (cardType == CARD_SDHC) {
-    Serial.println("SDHC");
-  } else {
-    Serial.println("UNKNOWN");
-  }
-
-  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-  Serial.printf("SD Card Size: %lluMB\n", cardSize);
-
-
-  // Load data from RTC memory only if waking up from deep sleep
-  if (isWakedUpFromDeepSleep) {
-    strcpy(gpstimeLast, rtcData.gpstimeLast);
-    strcpy(dateLast, rtcData.dateLast);
-    strcpy(latLast, rtcData.latLast);
-    strcpy(lonLast, rtcData.lonLast);
-    isMissionMode = rtcData.isMissionMode;
-    timeDifference = rtcData.timeDifference;
-    loadStationPositionsFromRTC(stationPositions);
-  }
- 
-  
   // Überprüfen des Wakeup-Reasons
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-  switch (wakeup_reason) {
+   switch (wakeup_reason) {
     case ESP_SLEEP_WAKEUP_EXT0: 
       debugPrintln("Wakeup caused by external signal using RTC_IO");
       break;
@@ -240,36 +207,47 @@ void setup() {
       break;
     default: 
       debugPrintln("Wakeup was not caused by deep sleep");
+      delay(7500);
       break;
   }
 
 
+  // Load data from RTC memory only if waking up from deep sleep
+  if (isWakedUpFromDeepSleep) {
+    strcpy(gpstimeLast, rtcData.gpstimeLast);
+    strcpy(dateLast, rtcData.dateLast);
+    strcpy(latLast, rtcData.latLast);
+    strcpy(lonLast, rtcData.lonLast);
+    isMissionMode = rtcData.isMissionMode;
+    timeDifference = rtcData.timeDifference; // thats the reason why ???
+    loadStationPositionsFromRTC(stationPositions);
+    debugPrintln("Relaoded data from RTC memory");
+  }
+
   // Debug-Ausgabe der geladenen Werte
   debugPrint("LatLast: ");
-  debugPrint(rtcData.latLast);
+  debugPrint(latLast);
   debugPrint(", LonLast: ");
-  debugPrintln(rtcData.lonLast);
+  debugPrintln(lonLast);
 
   // Initialisiere die LED-Pins
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(GREEN_LED_PIN, OUTPUT);
   digitalWrite(RED_LED_PIN, LOW);
   digitalWrite(GREEN_LED_PIN, LOW);
-
+  // LED initial blink
 }
 
 void loop() {
-
-Serial.println("Start GNSS loop");
-
-// Read data from the GPS module
-while (gpsSerial.available() > 0) {
-  gps.encode(gpsSerial.read());
+  // Read data from the GPS module
+  while (gpsSerial.available() > 0) {
+    gps.encode(gpsSerial.read());
   }
-  if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
-  // if (gps.location.isUpdated()) {
+    debugPrint("New GNSS updated data");
+    if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
     // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
     // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
+    debugPrintln("Processing new position");
     processPosition();
 
     // Berechne die Zeitdifferenz zwischen gpstime und gpstimeLast
@@ -278,9 +256,9 @@ while (gpsSerial.available() > 0) {
       debugPrint("Time difference: " + String(timeDifference) + " seconds");
       debugPrintln("timeToLastPositionTreshold: " + String(timeToLastPositionTreshold) + " seconds");
     }
-    if ((timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
-      // Überprüfe, ob die letzte Position lang zurückliegt, zB weil das GPS-Modul neu gestartet wurde 
-      // und die Zeitdifferenz größer als der Schwellenwert ist
+    if (((!isMissionMode) && (timeDifference > timeToLastPositionTreshold)) || (strlen(gpstimeLast) == 0)) { 
+      // Überprüfe wenn in Station-Mode die Zeitdifferenz größer als der Schwellenwert ist
+      // oder wenn gpstimeLast leer ist
       // Wenn true wird der Mission-Modus aktiviert und der Postionsspeicher geleert
       // neue Station-Positionen werden am Anfang der Liste hinzugefügt
       debugPrintln("Clear stationPositions due to time difference");
@@ -334,7 +312,7 @@ while (gpsSerial.available() > 0) {
         processPosition();
       }
 
-      if (millis() - lastSwitchTime >= switchInterval) {
+      if (millis() - lastSwitchTime >= switchInterval) { // if to change into station mode every switchInterval seconds
         bool withinRange = false;
         for (const auto& pos : stationPositions) {
           if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
@@ -422,5 +400,5 @@ while (gpsSerial.available() > 0) {
     strcpy(rtcData.lonLast, lonLast);
     rtcData.isMissionMode = isMissionMode;
     rtcData.timeDifference = timeDifference;
-  }
+    }
 } // End of loop min 1 sec
