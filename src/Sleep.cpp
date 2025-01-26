@@ -13,10 +13,7 @@ extern RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
 // Funktion zur Aktivierung des Light-Sleep-Modus
 void enableLightSleep(unsigned long seconds)
 {
-  if (TEST)
-  {
-    blinkMorseCode("A", RED_LED_PIN, 1);
-  }
+  blinkMorseCode("A", RED_LED_PIN, 1,TEST);
   debugPrintln("Light-Sleep-Modus aktiviert");
   delay(100);                                       // Warte 100 Millisekunden
   esp_sleep_enable_timer_wakeup(seconds * 1000000); // Zeit in Mikrosekunden
@@ -26,10 +23,7 @@ void enableLightSleep(unsigned long seconds)
 // Funktion zur Aktivierung des Deep-Sleep-Modus
 void enableDeepSleep(unsigned long seconds)
 {
-  if (TEST)
-  {
-    blinkMorseCode("J", RED_LED_PIN, 1);
-  }
+  blinkMorseCode("J", RED_LED_PIN, 1,TEST);
   debugPrintln("Deep-Sleep-Modus aktiviert");
   delay(100);                                       // Warte 100 Millisekunden
   esp_sleep_enable_timer_wakeup(seconds * 1000000); // Zeit in Mikrosekunden
@@ -39,10 +33,7 @@ void enableDeepSleep(unsigned long seconds)
 // Funktion zur Aktivierung des Modem-Sleep-Modus
 void enableModemSleep()
 {
-  if (TEST)
-  {
-    blinkMorseCode("M", RED_LED_PIN, 1);
-  }
+  blinkMorseCode("M", RED_LED_PIN, 1,TEST);
   WiFi.mode(WIFI_OFF);                // Deaktivieren des WiFi-Moduls
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM); // Aktivieren des Modem-Sleep-Modus
   debugPrintln("Modem-Sleep-Modus aktiviert");
@@ -51,10 +42,7 @@ void enableModemSleep()
 // Funktion zur Deaktivierung des Modem-Sleep-Modus
 void disableModemSleep()
 {
-  if (TEST)
-  {
-    blinkMorseCode("M", GREEN_LED_PIN, 1);
-  }
+  blinkMorseCode("M", GREEN_LED_PIN, 1,TEST);
   esp_wifi_set_ps(WIFI_PS_NONE); // Deaktivieren des Modem-Sleep-Modus
   WiFi.mode(WIFI_STA);           // Aktivieren des WiFi-Moduls
   debugPrintln("Modem-Sleep-Modus deaktiviert");

@@ -3,6 +3,6 @@
 
 #include <Arduino.h>
 
-void blinkMorseCode(const String &text, int ledPin, int repeatCount);
+void blinkMorseCode(const String &text, int ledPin, int repeatCount, bool TEST) ;
 
 #endif // MORSE_LED_H

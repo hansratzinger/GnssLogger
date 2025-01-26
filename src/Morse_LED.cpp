@@ -2,6 +2,9 @@
 #include <map>
 #include "Morse_LED.h"
 
+// Define TEST as a boolean variable
+// bool TEST = true;
+
 // Define the Morse code for each character
 std::map<char, String> morseCode = {
   {'A', ".-"}, {'B', "-..."}, {'C', "-.-."}, {'D', "-.."}, {'E', "."},
@@ -15,7 +18,29 @@ std::map<char, String> morseCode = {
 };
 
 // Funktion zum Blinken der LED im Morse-Code-Rhythmus
-void blinkMorseCode(const String &text, int ledPin, int repeatCount) {
+/**
+ * @brief Blinks an LED to represent the given text in Morse code.
+ * 
+ * This function converts the input text to Morse code and blinks an LED
+ * connected to the specified pin accordingly. The blinking pattern for each
+ * character is repeated a specified number of times.
+ * 
+ * @param text The text to be converted to Morse code and blinked.
+ * @param ledPin The pin number where the LED is connected.
+ * @param repeatCount The number of times the entire text should be repeated.
+ * 
+ * @note The function will only execute if the global constant TEST is true.
+ * 
+ * The Morse code for each character is defined in the global map `morseCode`.
+ * Each dot (.) is represented by a 200 ms HIGH signal, and each dash (-) is
+ * represented by a 500 ms HIGH signal. There is a 200 ms LOW signal between
+ * each dot and dash, a 500 ms LOW signal between each character, and a 1000 ms
+ * LOW signal between each repetition of the text.
+ */
+void blinkMorseCode(const String &text, int ledPin, int repeatCount, bool TEST) {
+  if (!TEST) {
+    return;
+  } 
   pinMode(ledPin, OUTPUT);
 
   for (int r = 0; r < repeatCount; r++) {
