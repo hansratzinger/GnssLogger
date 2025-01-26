@@ -233,13 +233,13 @@ void setup() {
 void loop() {
   // Read data from the GPS module
   while (gpsSerial.available() > 0) {
-    static unsigned long lastPositionTime = 0;
+    // static unsigned long lastPositionTime = 0;
     gps.encode(gpsSerial.read());
   }
-  unsigned long currentTime = millis();
-  unsigned long lastPositionTime = 0;
-  if (currentTime - lastPositionTime >= 250) { // Wartezeit von mindestens 0,25 Sekunde
-    lastPositionTime = currentTime;
+  // unsigned long currentTime = millis();
+  // unsigned long lastPositionTime = 0;
+  // if (currentTime - lastPositionTime >= 250) { // Wartezeit von mindestens 0,25 Sekunde
+  //   lastPositionTime = currentTime;
     if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
     // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
     // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
@@ -397,4 +397,4 @@ void loop() {
     rtcData.timeDifference = timeDifference;
     }
   } // End of loop min 1 sec
-}
+// }
