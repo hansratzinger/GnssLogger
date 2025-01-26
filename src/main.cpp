@@ -30,6 +30,7 @@
 // -  the time.h library for time-related functions.
 // Hans Ratzinger 2025-01-26
 // https://github.com/hansratzinger/GnssLogger
+// Release 1.0.0
 // ----------------------------------------------------------------------------------------------
 
 #include <esp_sleep.h>
