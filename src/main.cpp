@@ -81,10 +81,10 @@ RTC_DATA_ATTR RtcData rtcData;
 
 const bool TEST = true; // Definition der Konstante TEST
 
-const unsigned long switchInterval = 5000; // 5 Sekunden
-const double circleAroundPosition = 15.0; // Radius in Metern
-const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
-const unsigned long sleepingTimeDeepSleep = 7; // 5 Sekunden
+const unsigned long switchInterval = 500; // 0,5 Sekunden
+const double circleAroundPosition = 5.0; // Radius in Metern
+const unsigned long sleepingTimeLightSleep = 1; // 2 Sekunden
+const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
 const double hdopTreshold = 1; // HDOP-Schwellenwert
 
 const unsigned long timeToLastPositionTreshold = 60; // Zeitdifferenz-Schwellenwert in Sekunden
@@ -258,6 +258,11 @@ void setup() {
   }
 
   // Debug-Ausgabe der geladenen Werte
+  if (isWakedUpFromDeepSleep && !isMissionMode) {
+    debugPrintln("isWakedUpFromDeepSleep -> Station Mode");
+  } else if (isWakedUpFromDeepSleep && isMissionMode) {
+    debugPrintln("WakedUpFromDeepSleep -> Mission Mode");
+  }
   debugPrint("LatLast: ");
   debugPrint(rtcData.latLast);
   debugPrint(", LonLast: ");
@@ -291,7 +296,7 @@ void loop() {
       debugPrint("Time difference: " + String(timeDifference) + " seconds");
       debugPrintln("timeToLastPositionTreshold: " + String(timeToLastPositionTreshold) + " seconds");
     }
-    if ((timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
+    if ((positionDifference > circleAroundPosition) || (timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
       // Überprüfe, ob die letzte Position lang zurückliegt, zB weil das GPS-Modul neu gestartet wurde 
       // und die Zeitdifferenz größer als der Schwellenwert ist
       // Wenn true wird der Mission-Modus aktiviert und der Postionsspeicher geleert
