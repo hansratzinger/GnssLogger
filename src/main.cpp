@@ -30,7 +30,7 @@
 // -  the time.h library for time-related functions.
 // Hans Ratzinger 2025-01-26
 // https://github.com/hansratzinger/GnssLogger
-// Release 1.0.0
+// release 1.0.1
 // ----------------------------------------------------------------------------------------------
 
 #include <esp_sleep.h>
@@ -52,7 +52,7 @@
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
-const String BRANCH="main"; // Branch name
+const String BRANCH="release 1.0.1"; // Branch name
 
 // Deklaration von Variablen
 
@@ -87,9 +87,9 @@ const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
 const unsigned long sleepingTimeDeepSleep = 7; // 5 Sekunden
 const double hdopTreshold = 1; // HDOP-Schwellenwert
 
-const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
+const unsigned long timeToLastPositionTreshold = 60; // Zeitdifferenz-Schwellenwert in Sekunden
 const unsigned long delayTime = 500; // LED blink delay time
-const unsigned long switchTime = 1000; // Zeitdifferenz-Schwellenwert in Sekunden
+const unsigned long switchTime = 500; // Zeitdifferenz-Schwellenwert in Sekunden
 const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;Mission\n";
 
 // The TinyGPS++ object
@@ -194,8 +194,8 @@ snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
   }
 
   // Debug-Ausgabe
-  Serial.print("new logging: ");
-  Serial.println(logging);
+  debugPrint("new logging: ");
+  debugPrintln(logging);
 
   // Speichern der Daten in der Datei
   // String fileName = generateFileName(gps);
@@ -216,7 +216,7 @@ void setup() {
 
   // Reduzieren der Clock-Rate auf 80 MHz
   setCpuFrequencyMhz(80);
-  Serial.println("CPU frequency set to 80 MHz");
+  debugPrintln("CPU frequency set to 80 MHz");
 
   // Initialisiere die SD-Karte
   initializeSDCard();
@@ -231,7 +231,7 @@ void setup() {
       Serial.println("Wakeup caused by external signal using RTC_CNTL");
       break;
     case ESP_SLEEP_WAKEUP_TIMER: 
-      Serial.println("Wakeup caused by timer");
+      debugPrintln("Wakeup caused by timer");
       isWakedUpFromDeepSleep = true;
       break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD: 
@@ -258,10 +258,10 @@ void setup() {
   }
 
   // Debug-Ausgabe der geladenen Werte
-  Serial.print("LatLast: ");
-  Serial.print(rtcData.latLast);
-  Serial.print(", LonLast: ");
-  Serial.println(rtcData.lonLast);
+  debugPrint("LatLast: ");
+  debugPrint(rtcData.latLast);
+  debugPrint(", LonLast: ");
+  debugPrintln(rtcData.lonLast);
 
   // Initialisiere die LED-Pins
   pinMode(RED_LED_PIN, OUTPUT);
@@ -336,18 +336,18 @@ void loop() {
     // Wechsel zwischen Station- und Mission-Modus
     if (isMissionMode) {
       // Schreibe nur im Mission-Modus auf die SD-Karte
-      if (strcmp(date, "2000/00/00") != 0) {
+      // if (strcmp(date, "2000/00/00") != 0) {
         // Schalte die LEDs entsprechend dem Modus
         if (TEST) {
           blinkMorseCode("G", GREEN_LED_PIN, 1,TEST); // Grüne LED blinkt im Mission-Modus
         }
-      }
+      // }
       if (millis() - lastSwitchTime >= switchInterval) {
         bool withinRange = false;
         for (const auto& pos : stationPositions) {
           if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
             withinRange = true;
-            break;
+            // break;
           }
         }
         if (withinRange) {
@@ -360,12 +360,12 @@ void loop() {
       enableLightSleep(sleepingTimeLightSleep);
 
     } else {  // Station-Modus
-      // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
+      // Überprüfen, ob die aktuelle Position außerhalb des Radius der stationPositions liegt
       bool outsideDoubleRadius = true;
       for (const auto& pos : stationPositions) {
         debugPrintln("lat: " + String(atof(lat), 6) + ", lon: " + String(atof(lon), 6));
         debugPrintln("Checking position first/second: " + String(pos.first, 6) + ", " + String(pos.second, 6));
-        debugPrintln("circleAroundPosition * 2: " + String(circleAroundPosition));
+        debugPrintln("circleAroundPosition : " + String(circleAroundPosition));
         if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
           isMissionMode = true;
           stationPositions.clear();
@@ -386,18 +386,22 @@ void loop() {
         strcpy(lonLast, lon);
         
         debugPrintln("Switched to Deep Sleep Mode");
-        Serial.print("gpstimeLast: ");
-        Serial.print(gpstimeLast);
-        Serial.print(", dateLast: ");
-        Serial.print(dateLast);
-        Serial.print(", latLast: ");
-        Serial.print(latLast);
-        Serial.print(", lonLast: ");
-        Serial.print(lonLast);
-        Serial.print(", isMissionMode: ");
-        Serial.println(isMissionMode);
-        delay(delayTime); // Wartezeit für die LED-Anzeige
-
+        debugPrint("gpstimeLast: ");
+        debugPrint(gpstimeLast);
+        debugPrint(", dateLast: ");
+        debugPrint(dateLast);
+        debugPrint(", latLast: ");
+        debugPrint(latLast);
+        debugPrint(", lonLast: ");
+        debugPrint(lonLast);
+        debugPrint(", isMissionMode: ");
+        debugPrintln(isMissionMode ? "true" : "false");
+        
+        if (TEST) {
+          blinkMorseCode("R", RED_LED_PIN, 1,TEST); // Rote LED blinkt im Station-Modus 
+          delay(delayTime); // Wartezeit für die LED-Anzeige
+        } 
+       
         // Speichern der Daten im RTC-Speicher
         strcpy(rtcData.gpstimeLast, gpstimeLast);
         strcpy(rtcData.dateLast, dateLast);
@@ -406,6 +410,9 @@ void loop() {
         rtcData.isMissionMode = isMissionMode;
         rtcData.timeDifference = timeDifference;
         enableDeepSleep(sleepingTimeDeepSleep);
+      } else {
+        // Aktivieren des Light-Sleep-Modus im Mission-Modus
+        enableLightSleep(sleepingTimeLightSleep);
       }
      }
     }
