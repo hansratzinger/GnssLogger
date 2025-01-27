@@ -306,7 +306,7 @@ void loop() {
       debugPrint("Time difference: " + String(timeDifference) + " seconds");
       debugPrintln("timeToLastPositionTreshold: " + String(timeToLastPositionTreshold) + " seconds");
     }
-    if ((positionDifference > setcircleAroundPosition()) || (timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
+    if ((positionDifference > setCircleAroundPosition()) || (timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
       // Überprüfe, ob die letzte Position lang zurückliegt, zB weil das GPS-Modul neu gestartet wurde 
       // und die Zeitdifferenz größer als der Schwellenwert ist
       // Wenn true wird der Mission-Modus aktiviert und der Postionsspeicher geleert
@@ -330,7 +330,7 @@ void loop() {
           double newLon = gps.location.lng();
           processPosition();
           // if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
-          if (isWithinRange(newLat, newLon, lastLat, lastLon, circleAroundPosition)) {
+          if (isWithinRange(newLat, newLon, lastLat, lastLon, setCircleAroundPosition())) {
             stationPositions.push_back(std::make_pair(newLat, newLon));
             debugPrintln("Added position to stationPositions: " + String(newLat, 6) + ", " + String(newLon, 6));
           } else {
@@ -363,7 +363,8 @@ void loop() {
       if (millis() - lastSwitchTime >= switchInterval) {
         bool withinRange = false;
         for (const auto& pos : stationPositions) {
-          if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, setcircleAroundPosition())) {
+          if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, setCircleAroundPosition())) { 
+            // Überprüfen, ob die aktuelle Position innerhalb des Radius der stationPositions liegt
             withinRange = true;
             // break;
           }
@@ -384,7 +385,7 @@ void loop() {
         debugPrintln("lat: " + String(atof(lat), 6) + ", lon: " + String(atof(lon), 6));
         debugPrintln("Checking position first/second: " + String(pos.first, 6) + ", " + String(pos.second, 6));
         debugPrintln("circleAroundPosition : " + String(setCircleAroundPosition()));
-        if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, setcircleAroundPosition())) {
+        if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, setCircleAroundPosition())) {
           isMissionMode = true;
           stationPositions.clear();
           debugPrintln("Switched to Mission Mode due to position outside double radius");
