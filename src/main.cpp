@@ -301,7 +301,7 @@ void loop() {
       // und die Zeitdifferenz größer als der Schwellenwert ist
       // Wenn true wird der Mission-Modus aktiviert und der Postionsspeicher geleert
       // neue Station-Positionen werden am Anfang der Liste hinzugefügt
-      debugPrintln("Clear stationPositions due to time difference");
+      debugPrintln("Clear stationPositions due to position difference or time difference");
       isMissionMode = true;
       stationPositions.clear();
       stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
@@ -310,13 +310,16 @@ void loop() {
       debugPrintln("Building SMM stationPositions");
       while (stationPositions.size() < 10) {
         // Warte auf die nächste gültige Position
+        double lastLat = gps.location.lat();
+        double lastLon = gps.location.lng();
         while (gpsSerial.available() > 0) {
           gps.encode(gpsSerial.read());
         }
         if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
           double newLat = gps.location.lat();
           double newLon = gps.location.lng();
-          if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
+          // if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
+          if (isWithinRange(newLat, newLon, lastLat, lastLon, circleAroundPosition)) {
             stationPositions.push_back(std::make_pair(newLat, newLon));
             debugPrintln("Added position to stationPositions: " + String(newLat, 6) + ", " + String(newLon, 6));
           } else {
