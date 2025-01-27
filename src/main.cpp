@@ -65,6 +65,8 @@ bool isMissionMode = true;
 bool isWakedUpFromLightSleep = false;
 bool isWakedUpFromDeepSleep = false;
 
+double newLat = 0.0, newLon = 0.0, lastLat = 0.0, lastLon = 0.0;
+
 RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
 // Struktur für RTC-Speicher
 struct RtcData {
@@ -163,11 +165,11 @@ void processPosition() {
   snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
 
   // Bestimme die Himmelsrichtung
-// filepath: /c:/esp32/GnssLogger/src/main.cpp
-char directionLatChar = getDirectionOfLat(gps.location.lat());
-char directionLngChar = getDirectionOfLng(gps.location.lng());
-snprintf(directionLat, sizeof(directionLat), "%c", directionLatChar);
-snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
+  // filepath: /c:/esp32/GnssLogger/src/main.cpp
+  char directionLatChar = getDirectionOfLat(gps.location.lat());
+  char directionLngChar = getDirectionOfLng(gps.location.lng());
+  snprintf(directionLat, sizeof(directionLat), "%c", directionLatChar);
+  snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
 
   snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
   snprintf(date, sizeof(date), "%04d-%02d-%02d", gps.date.year(), gps.date.month(), gps.date.day());
@@ -320,17 +322,18 @@ void loop() {
       debugPrintln("Building SMM stationPositions");
       while (stationPositions.size() < 10) {
         // Warte auf die nächste gültige Position
-        double lastLat = gps.location.lat();
-        double lastLon = gps.location.lng();
+ 
         while (gpsSerial.available() > 0) {
           gps.encode(gpsSerial.read());
         }
         if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
-          double newLat = gps.location.lat();
-          double newLon = gps.location.lng();
+          lastLat = gps.location.lat();          
+          lastLon = gps.location.lng();
+          newLat = gps.location.lat();
+          newLon = gps.location.lng();
           processPosition();
           // if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
-          if (isWithinRange(newLat, newLon, lastLat, lastLon, setCircleAroundPosition())) {
+          if (isWithinRange(atof(lat), atof(lon), atof(latLast), atof(lonLast),setCircleAroundPosition())) {
             stationPositions.push_back(std::make_pair(newLat, newLon));
             debugPrintln("Added position to stationPositions: " + String(newLat, 6) + ", " + String(newLon, 6));
           } else {
@@ -363,7 +366,7 @@ void loop() {
       if (millis() - lastSwitchTime >= switchInterval) {
         bool withinRange = false;
         for (const auto& pos : stationPositions) {
-          if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, setCircleAroundPosition())) { 
+          if (isWithinRange(atof(lat), atof(lon), atof(latLast), atof(lonLast),setCircleAroundPosition())) {
             // Überprüfen, ob die aktuelle Position innerhalb des Radius der stationPositions liegt
             withinRange = true;
             // break;
@@ -385,7 +388,7 @@ void loop() {
         debugPrintln("lat: " + String(atof(lat), 6) + ", lon: " + String(atof(lon), 6));
         debugPrintln("Checking position first/second: " + String(pos.first, 6) + ", " + String(pos.second, 6));
         debugPrintln("circleAroundPosition : " + String(setCircleAroundPosition()));
-        if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, setCircleAroundPosition())) {
+        if (!isWithinRange(atof(lat), atof(lon), atof(latLast), atof(lonLast),setCircleAroundPosition())) {
           isMissionMode = true;
           stationPositions.clear();
           debugPrintln("Switched to Mission Mode due to position outside double radius");
