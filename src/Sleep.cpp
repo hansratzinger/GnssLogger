@@ -13,7 +13,7 @@ extern RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
 // Funktion zur Aktivierung des Light-Sleep-Modus
 void enableLightSleep(unsigned long seconds)
 {
-  blinkMorseCode("A", RED_LED_PIN, 1,TEST);
+  blinkMorseCode("A", GREEN_LED_PIN, 1,TEST);
   debugPrintln("Light-Sleep-Modus aktiviert");
   delay(100);                                       // Warte 100 Millisekunden
   esp_sleep_enable_timer_wakeup(seconds * 1000000); // Zeit in Mikrosekunden

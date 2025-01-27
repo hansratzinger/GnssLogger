@@ -318,6 +318,7 @@ void loop() {
         if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
           double newLat = gps.location.lat();
           double newLon = gps.location.lng();
+          processPosition();
           // if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
           if (isWithinRange(newLat, newLon, lastLat, lastLon, circleAroundPosition)) {
             stationPositions.push_back(std::make_pair(newLat, newLon));
@@ -343,8 +344,7 @@ void loop() {
 
     // Wechsel zwischen Station- und Mission-Modus
     if (isMissionMode) {
-      // Schreibe nur im Mission-Modus auf die SD-Karte
-      // if (strcmp(date, "2000/00/00") != 0) {
+        // if (strcmp(date, "2000/00/00") != 0) {
         // Schalte die LEDs entsprechend dem Modus
         if (TEST) {
           blinkMorseCode("G", GREEN_LED_PIN, 1,TEST); // Grüne LED blinkt im Mission-Modus
@@ -384,9 +384,6 @@ void loop() {
         if (stationPositions.size() >= 5) {
         saveStationPositionsToRTC(stationPositions);
         }
-        // Schalte die LEDs entsprechend dem Modus
-        blinkMorseCode("R", RED_LED_PIN, 1,TEST); // Rote LED blinkt im Station-Modus
-    
         // Save the last values
         strcpy(gpstimeLast, gpstime);
         strcpy(dateLast, date);
@@ -405,11 +402,6 @@ void loop() {
         debugPrint(", isMissionMode: ");
         debugPrintln(isMissionMode ? "true" : "false");
         
-        if (TEST) {
-          blinkMorseCode("R", RED_LED_PIN, 1,TEST); // Rote LED blinkt im Station-Modus 
-          delay(delayTime); // Wartezeit für die LED-Anzeige
-        } 
-       
         // Speichern der Daten im RTC-Speicher
         strcpy(rtcData.gpstimeLast, gpstimeLast);
         strcpy(rtcData.dateLast, dateLast);
