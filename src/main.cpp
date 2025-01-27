@@ -82,7 +82,9 @@ RTC_DATA_ATTR RtcData rtcData;
 const bool TEST = true; // Definition der Konstante TEST
 
 const unsigned long switchInterval = 500; // 0,5 Sekunden
-const double circleAroundPosition = 5.0; // Radius in Metern
+double circleAroundPosition = 0; // Radius in Metern
+const double circleAroundPositionInMissionMode = 0.8; // Radius-Schwellenwert in Metern
+const double circleAroundPositionInStationMode = 3; // Radius-Schwellenwert in Metern
 const unsigned long sleepingTimeLightSleep = 1; // 2 Sekunden
 const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
 const double hdopTreshold = 1; // HDOP-Schwellenwert
@@ -116,6 +118,14 @@ unsigned long getTimeDifference(const char *gpstime, const char *gpstimeLast) {
     return time1 - time2;
   } else {
     return time2 - time1;
+  }
+}
+
+double setCircleAroundPosition() {
+  if (isMissionMode) {
+    return circleAroundPositionInMissionMode;
+  } else {
+    return circleAroundPositionInStationMode;
   }
 }
 
@@ -296,7 +306,7 @@ void loop() {
       debugPrint("Time difference: " + String(timeDifference) + " seconds");
       debugPrintln("timeToLastPositionTreshold: " + String(timeToLastPositionTreshold) + " seconds");
     }
-    if ((positionDifference > circleAroundPosition) || (timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
+    if ((positionDifference > setcircleAroundPosition()) || (timeDifference > timeToLastPositionTreshold) || (strlen(gpstimeLast) == 0)) { 
       // Überprüfe, ob die letzte Position lang zurückliegt, zB weil das GPS-Modul neu gestartet wurde 
       // und die Zeitdifferenz größer als der Schwellenwert ist
       // Wenn true wird der Mission-Modus aktiviert und der Postionsspeicher geleert
@@ -353,7 +363,7 @@ void loop() {
       if (millis() - lastSwitchTime >= switchInterval) {
         bool withinRange = false;
         for (const auto& pos : stationPositions) {
-          if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
+          if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, setcircleAroundPosition())) {
             withinRange = true;
             // break;
           }
@@ -373,8 +383,8 @@ void loop() {
       for (const auto& pos : stationPositions) {
         debugPrintln("lat: " + String(atof(lat), 6) + ", lon: " + String(atof(lon), 6));
         debugPrintln("Checking position first/second: " + String(pos.first, 6) + ", " + String(pos.second, 6));
-        debugPrintln("circleAroundPosition : " + String(circleAroundPosition));
-        if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
+        debugPrintln("circleAroundPosition : " + String(setCircleAroundPosition()));
+        if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, setcircleAroundPosition())) {
           isMissionMode = true;
           stationPositions.clear();
           debugPrintln("Switched to Mission Mode due to position outside double radius");
