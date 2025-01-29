@@ -30,7 +30,6 @@
 // -  the time.h library for time-related functions.
 // Hans Ratzinger 2025-01-26
 // https://github.com/hansratzinger/GnssLogger
-// Release 1.0.0
 // ----------------------------------------------------------------------------------------------
 
 #include <esp_sleep.h>
@@ -42,6 +41,8 @@
 #include <Morse_LED.h>
 #include <SD.h>
 #include <SPI.h>
+#include <Arduino.h>
+#include "pins.h"
 
 // Define the RX and TX pins for Serial 2
 #define RXD2 16
@@ -53,6 +54,7 @@ const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
 const String BRANCH="main"; // Branch name
+const String RELEASE="1.0.2"; // Branch name
 
 // Deklaration von Variablen
 
@@ -82,7 +84,7 @@ RTC_DATA_ATTR RtcData rtcData;
 const bool TEST = true; // Definition der Konstante TEST
 
 const unsigned long switchInterval = 5000; // 5 Sekunden
-const double circleAroundPosition = 15.0; // Radius in Metern
+const double circleAroundPosition = 4; // Radius in Metern
 const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
 const unsigned long sleepingTimeDeepSleep = 7; // 5 Sekunden
 const double hdopTreshold = 1; // HDOP-Schwellenwert
@@ -245,7 +247,6 @@ void setup() {
       break;
   }
 
-
   // Load data from RTC memory only if waking up from deep sleep
   if (isWakedUpFromDeepSleep) {
     strcpy(gpstimeLast, rtcData.gpstimeLast);
@@ -268,9 +269,12 @@ void setup() {
   pinMode(GREEN_LED_PIN, OUTPUT);
   digitalWrite(RED_LED_PIN, LOW);
   digitalWrite(GREEN_LED_PIN, LOW);
+  
+  ledMode(isMissionMode,TEST); // Grüne LED für Mission-Modus, Rote LED für Station-Modus
 }
 
 void loop() {
+  ledMode(isMissionMode,TEST); // Grüne LED für Mission-Modus, Rote LED für Station-Modus
   // Read data from the GPS module
   while (gpsSerial.available() > 0) {
     static unsigned long lastPositionTime = 0;
@@ -298,6 +302,7 @@ void loop() {
       // neue Station-Positionen werden am Anfang der Liste hinzugefügt
       debugPrintln("Clear stationPositions due to time difference");
       isMissionMode = true;
+      ledMode(isMissionMode,TEST); // Grüne LED für Mission-Modus, Rote LED für Station-Modus
       stationPositions.clear();
       stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
       
@@ -324,6 +329,7 @@ void loop() {
       
       if (stationPositions.size() == 10) {
         isMissionMode = false;
+        ledMode(isMissionMode,TEST); // Grüne LED für Mission-Modus, Rote LED für Station-Modus
         debugPrintln("Switched to Station Mode");
         // Schreibe nur die erste Position aus stationPositions auf die SD-Karte
         if (!stationPositions.empty()) {
@@ -352,12 +358,14 @@ void loop() {
         }
         if (withinRange) {
           isMissionMode = false;
+          ledMode(isMissionMode,TEST); // Grüne LED für Mission-Modus, Rote LED für Station-Modus
           lastSwitchTime = millis();
           debugPrintln("Switched to Station Mode");
         }
       }
       // Aktivieren des Light-Sleep-Modus im Mission-Modus
       enableLightSleep(sleepingTimeLightSleep);
+      ledMode(isMissionMode,TEST); // Grüne LED für Mission-Modus, Rote LED für Station-Modus
 
     } else {  // Station-Modus
       // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt
@@ -368,6 +376,7 @@ void loop() {
         debugPrintln("circleAroundPosition * 2: " + String(circleAroundPosition));
         if (!isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
           isMissionMode = true;
+          ledMode(isMissionMode,TEST); // Grüne LED für Mission-Modus, Rote LED für Station-Modus
           stationPositions.clear();
           debugPrintln("Switched to Mission Mode due to position outside double radius");
         }
@@ -376,9 +385,7 @@ void loop() {
         if (stationPositions.size() >= 5) {
         saveStationPositionsToRTC(stationPositions);
         }
-        // Schalte die LEDs entsprechend dem Modus
-        blinkMorseCode("R", RED_LED_PIN, 1,TEST); // Rote LED blinkt im Station-Modus
-    
+          
         // Save the last values
         strcpy(gpstimeLast, gpstime);
         strcpy(dateLast, date);
@@ -396,6 +403,7 @@ void loop() {
         Serial.print(lonLast);
         Serial.print(", isMissionMode: ");
         Serial.println(isMissionMode);
+
         delay(delayTime); // Wartezeit für die LED-Anzeige
 
         // Speichern der Daten im RTC-Speicher

@@ -2,9 +2,6 @@
 #include <map>
 #include "Morse_LED.h"
 
-// Define TEST as a boolean variable
-// bool TEST = true;
-
 // Define the Morse code for each character
 std::map<char, String> morseCode = {
   {'A', ".-"}, {'B', "-..."}, {'C', "-.-."}, {'D', "-.."}, {'E', "."},
@@ -79,3 +76,33 @@ void blinkMorseCode(const String &text, int ledPin, int repeatCount, bool TEST) 
 // void loop() {
 //   // Ihr Code hier
 // }
+
+
+void ledON(int ledPin, bool TEST) {
+  if (!TEST) {
+    return;
+  }
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, HIGH);
+}
+
+void ledOFF(int ledPin, bool TEST) {
+  if (!TEST) {
+    return;
+  }
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
+}
+
+void ledMode(bool mode, bool TEST) {
+  if (!TEST) {
+    return;
+  } 
+  if (mode) {
+    ledON(GREEN_LED_PIN, TEST);
+    ledOFF(RED_LED_PIN, TEST);
+  } else {
+    ledON(RED_LED_PIN, TEST);
+    ledOFF(GREEN_LED_PIN, TEST);
+  }
+}
