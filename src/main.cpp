@@ -215,8 +215,8 @@ void setup() {
   btStop();
 
   // Reduzieren der Clock-Rate auf 80 MHz
-  setCpuFrequencyMhz(80);
-  Serial.println("CPU frequency set to 80 MHz");
+  // setCpuFrequencyMhz(80);
+  // Serial.println("CPU frequency set to 80 MHz");
 
   // Initialisiere die SD-Karte
   initializeSDCard();
