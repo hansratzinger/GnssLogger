@@ -59,18 +59,37 @@ const String RELEASE="1.1.0"; // Branch name
 // Deklaration von Variablen
 
 unsigned long lastSwitchTime = 0, timeDifference = 0;
-double positionDifference = 0.0;
+
 char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "", logging[100] = "";
 char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";  
+
+double positionDifference = 0.0;
 double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
+double gpsLat = 0.0, gpsLon = 0.0; // for debugging
+double gpsLatLast = 0.0, gpsLonLast = 0.0; // for debugging
+
+unsigned long currentTime = 0;
+unsigned long lastPositionTime = 0;
+
 bool isMissionMode = true;
 bool isWakedUpFromLightSleep = false;
 bool isWakedUpFromDeepSleep = false;
 
-double gpsLat = 0.0, gpsLon = 0.0; // for debugging
-double gpsLatLast = 0.0, gpsLonLast = 0.0; // for debugging
+const bool TEST = true; // Definition der Konstante TEST
+const unsigned long switchInterval = 1000; // 5 Sekunden
+const double circleAroundPosition = 3; // Radius in Metern
+const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
+const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
+const double hdopTreshold = 1; // HDOP-Schwellenwert
+const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
+const unsigned long delayTime = 500; // LED blink delay time
+const unsigned long switchTime = 1000; // Zeitdifferenz-Schwellenwert in Sekunden
+const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;Mission\n";
 
 RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
+// RTC-Speicher-Variable für die Struktur
+RTC_DATA_ATTR RtcData rtcData;
+
 // Struktur für RTC-Speicher
 struct RtcData {
   char gpstimeLast[10];
@@ -84,23 +103,6 @@ struct RtcData {
   bool isMissionMode;
   unsigned long timeDifference;
 };
-
-// RTC-Speicher-Variable für die Struktur
-RTC_DATA_ATTR RtcData rtcData;
-
-const bool TEST = true; // Definition der Konstante TEST
-
-const unsigned long switchInterval = 1000; // 5 Sekunden
-const double circleAroundPosition = 3; // Radius in Metern
-const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
-const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
-const double hdopTreshold = 1; // HDOP-Schwellenwert
-
-const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
-const unsigned long delayTime = 500; // LED blink delay time
-const unsigned long switchTime = 1000; // Zeitdifferenz-Schwellenwert in Sekunden
-const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;Mission\n";
-
 // The TinyGPS++ object
 TinyGPSPlus gps;
 
@@ -160,9 +162,12 @@ void writeToCSV(const String& data) {
 void processPosition() {   
   snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
   snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
-  
-  // Bestimme die Himmelsrichtung
-// filepath: /c:/esp32/GnssLogger/src/main.cpp
+  gpsLatLast = gpsLat;
+  gpsLonLast = gpsLon;
+  gpsLat = gps.location.lat();
+  gpsLon = gps.location.lng();
+
+// Bestimme die Himmelsrichtung
 char directionLatChar = getDirectionOfLat(gps.location.lat());
 char directionLngChar = getDirectionOfLng(gps.location.lng());
 snprintf(directionLat, sizeof(directionLat), "%c", directionLatChar);
@@ -287,8 +292,8 @@ void loop() {
     static unsigned long lastPositionTime = 0;
     gps.encode(gpsSerial.read());
   }
-  unsigned long currentTime = millis();
-  unsigned long lastPositionTime = 0;
+  currentTime = millis();
+  lastPositionTime = 0;
   if (currentTime - lastPositionTime >= switchTime) { // Wartezeit von mindestens 0,25 Sekunde
     lastPositionTime = currentTime;
     if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
