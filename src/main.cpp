@@ -53,8 +53,8 @@
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
-const String BRANCH="main"; // Branch name
-const String RELEASE="1.0.2"; // Branch name
+const String BRANCH="1.1.0"; // Branch name
+const String RELEASE="1.1.0"; // Branch name
 
 // Deklaration von Variablen
 
@@ -67,6 +67,9 @@ bool isMissionMode = true;
 bool isWakedUpFromLightSleep = false;
 bool isWakedUpFromDeepSleep = false;
 
+double gpsLat = 0.0, gpsLon = 0.0; // for debugging
+double gpsLatLast = 0.0, gpsLonLast = 0.0; // for debugging
+
 RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
 // Struktur für RTC-Speicher
 struct RtcData {
@@ -74,6 +77,10 @@ struct RtcData {
   char dateLast[11];
   char latLast[15];
   char lonLast[15];
+  double gpsLatLast;
+  double gpsLonLast;
+  double gpsLat;
+  double gpsLon;
   bool isMissionMode;
   unsigned long timeDifference;
 };
@@ -83,10 +90,10 @@ RTC_DATA_ATTR RtcData rtcData;
 
 const bool TEST = true; // Definition der Konstante TEST
 
-const unsigned long switchInterval = 5000; // 5 Sekunden
-const double circleAroundPosition = 4; // Radius in Metern
+const unsigned long switchInterval = 1000; // 5 Sekunden
+const double circleAroundPosition = 3; // Radius in Metern
 const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
-const unsigned long sleepingTimeDeepSleep = 7; // 5 Sekunden
+const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
 const double hdopTreshold = 1; // HDOP-Schwellenwert
 
 const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
@@ -153,7 +160,7 @@ void writeToCSV(const String& data) {
 void processPosition() {   
   snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
   snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
-
+  
   // Bestimme die Himmelsrichtung
 // filepath: /c:/esp32/GnssLogger/src/main.cpp
 char directionLatChar = getDirectionOfLat(gps.location.lat());
@@ -344,9 +351,9 @@ void loop() {
       // Schreibe nur im Mission-Modus auf die SD-Karte
       if (strcmp(date, "2000/00/00") != 0) {
         // Schalte die LEDs entsprechend dem Modus
-        if (TEST) {
-          blinkMorseCode("G", GREEN_LED_PIN, 1,TEST); // Grüne LED blinkt im Mission-Modus
-        }
+        ledMode(isMissionMode,TEST); // Grüne LED für Mission-Modus, Rote LED für Station-Modus
+        // Schreibe die Daten in die Datei
+        writeToCSV(logging);     
       }
       if (millis() - lastSwitchTime >= switchInterval) {
         bool withinRange = false;
