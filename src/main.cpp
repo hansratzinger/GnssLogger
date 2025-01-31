@@ -31,7 +31,7 @@
 // Hans Ratzinger 2025-01-26
 // https://github.com/hansratzinger/GnssLogger
 // ----------------------------------------------------------------------------------------------
-
+#include <Wire.h>
 #include <esp_sleep.h>
 #include <deque>
 #include <WiFi.h>
@@ -43,6 +43,9 @@
 #include <SPI.h>
 #include <Arduino.h>
 #include "pins.h"
+#include <I2Cdev.h>
+#include <Adafruit_MPU6050.h>
+
 
 // Define the RX and TX pins for Serial 2
 #define RXD2 16
