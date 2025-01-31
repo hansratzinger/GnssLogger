@@ -196,6 +196,9 @@ snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
   positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
   snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f", positionDifference);
   
+  // Read MPU6050 values and append to logging variable
+  readMPU6050(logging);
+  
   if (isMissionMode) {
   strcat(logging, ";mission\n");
   } else {
@@ -209,8 +212,7 @@ snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
     }
   }
 
-  // Read MPU6050 values and append to logging variable
-  readMPU6050(logging);
+  
 
   // Debug-Ausgabe
   Serial.print("new logging: ");
@@ -294,6 +296,9 @@ void setup() {
 }
 
 void loop() {
+  // Read MPU6050 values and append to logging variable
+  readMPU6050(logging);
+
   ledMode(isMissionMode,TEST); // Grüne LED für Mission-Modus, Rote LED für Station-Modus
   // Read data from the GPS module
   while (gpsSerial.available() > 0) {
