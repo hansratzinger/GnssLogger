@@ -1,0 +1,3 @@
+Bitte erstelle einen ergänzenden Code für die Integration von MPU6050. Die Funktionen dafür in MPU6050.cpp auslagern.
+
+Es sollen die Werte des Accelerometers ausgelesen werden und in die logging Variable am Ende eingefügt werden.

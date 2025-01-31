@@ -45,6 +45,7 @@
 #include "pins.h"
 #include <I2Cdev.h>
 #include <Adafruit_MPU6050.h>
+#include <MPU6050.h>
 
 
 // Define the RX and TX pins for Serial 2
@@ -56,8 +57,8 @@
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
-const String BRANCH="main"; // Branch name
-const String RELEASE="1.0.2"; // Branch name
+const String BRANCH="release 1.2.1 MPU6050"; // Branch name
+const String RELEASE="1.2.1"; // Branch name
 
 // Deklaration von Variablen
 
@@ -73,16 +74,26 @@ bool isWakedUpFromDeepSleep = false;
 RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
 // Struktur für RTC-Speicher
 struct RtcData {
-  char gpstimeLast[10];
-  char dateLast[11];
-  char latLast[15];
-  char lonLast[15];
-  bool isMissionMode;
-  unsigned long timeDifference;
+    unsigned long timeDifference;
+    char gpstimeLast[10];
+    char dateLast[11];
+    char latLast[15];
+    char lonLast[15];
+    char speedLast[10];
+    char altitudeLast[10];
+    char hdopLast[10];
+    char satellitesLast[10];
+    char loggingLast[100];
+    char firstlineLast[100];
+    double distanceLast;
+    double latDifference;
+    double lonDifference;
+    bool isMissionMode;
+    bool isWakedUpFromLightSleep;
+    bool isWakedUpFromDeepSleep;
 };
 
-// RTC-Speicher-Variable für die Struktur
-RTC_DATA_ATTR RtcData rtcData;
+RtcData rtcData;
 
 const bool TEST = true; // Definition der Konstante TEST
 
@@ -198,6 +209,9 @@ snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
     }
   }
 
+  // Read MPU6050 values and append to logging variable
+  readMPU6050(logging);
+
   // Debug-Ausgabe
   Serial.print("new logging: ");
   Serial.println(logging);
@@ -225,6 +239,9 @@ void setup() {
 
   // Initialisiere die SD-Karte
   initializeSDCard();
+
+  // Initialize the MPU6050
+  setupMPU6050();
 
   // Überprüfen des Wakeup-Reasons
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
