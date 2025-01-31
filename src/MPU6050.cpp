@@ -74,7 +74,7 @@ void readMPU6050(char* logging) {
     float gyroZ = g.gyro.z - gyroOffsets[2];
 
     // Format the accelerometer values and append to the logging variable
-    snprintf(logging + strlen(logging), 100 - strlen(logging), ", Accel: [%.2f, %.2f, %.2f]",
+    snprintf(logging + strlen(logging), sizeof(logging)- strlen(logging), "; Accel: [%.2f; %.2f; %.2f]",
              accelX, accelY, accelZ);
 
     // Print the accelerometer values to the Serial Monitor
