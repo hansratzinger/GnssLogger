@@ -5,6 +5,7 @@ Adafruit_MPU6050 mpu;
 
 float accelOffsets[3] = {0, 0, 0};
 float gyroOffsets[3] = {0, 0, 0};
+float accelX = 0, accelY = 0, accelZ = 0, gyroX = 0, gyroY = 0, gyroZ = 0;
 
 void setupMPU6050() {
     if (!mpu.begin()) {
@@ -61,32 +62,16 @@ void calibrateMPU6050() {
     Serial.println(gyroOffsets[2]);
 }
 
-char* readMPU6050(char* logging) {
+void readMPU6050() {
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
 
     // Apply offsets to the accelerometer and gyroscope values
-    float accelX = a.acceleration.x - accelOffsets[0];
-    float accelY = a.acceleration.y - accelOffsets[1];
-    float accelZ = a.acceleration.z - accelOffsets[2];
+    accelX = a.acceleration.x - accelOffsets[0];
+    accelY = a.acceleration.y - accelOffsets[1];
+    accelZ = a.acceleration.z - accelOffsets[2];
 
-    float gyroX = g.gyro.x - gyroOffsets[0];
-    float gyroY = g.gyro.y - gyroOffsets[1];
-    float gyroZ = g.gyro.z - gyroOffsets[2];
-
-    // Format the accelerometer values and append to the logging variable
-    snprintf(logging + strlen(logging), sizeof(logging)- strlen(logging), ";[%.2f; %.2f; %.2f\n]",
-             accelX, accelY, accelZ);
-
-    // Print the accelerometer values to the Serial Monitor
-    Serial.print("Accel X: "); Serial.print(accelX); Serial.print(" m/s^2, ");
-    Serial.print("Accel Y: "); Serial.print(accelY); Serial.print(" m/s^2, ");
-    Serial.print("Accel Z: "); Serial.print(accelZ); Serial.println(" m/s^2");
-
-    // Print the gyroscope values to the Serial Monitor
-    Serial.print("Gyro X: "); Serial.print(gyroX); Serial.print(" rad/s, ");
-    Serial.print("Gyro Y: "); Serial.print(gyroY); Serial.print(" rad/s, ");
-    Serial.print("Gyro Z: "); Serial.print(gyroZ); Serial.println(" rad/s");
-
-    return logging;
+    gyroX = g.gyro.x - gyroOffsets[0];
+    gyroY = g.gyro.y - gyroOffsets[1];
+    gyroZ = g.gyro.z - gyroOffsets[2];
 }

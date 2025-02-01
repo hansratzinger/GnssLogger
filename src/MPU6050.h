@@ -6,7 +6,9 @@
 #include <Wire.h>
 
 void setupMPU6050();
-char* readMPU6050(char* logging);
+void readMPU6050();
 void calibrateMPU6050();
+
+extern float accelX, accelY, accelZ, gyroX, gyroY, gyroZ;
 
 #endif // MPU6050_H

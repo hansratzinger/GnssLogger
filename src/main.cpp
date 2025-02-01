@@ -64,9 +64,11 @@ const String RELEASE="1.2.2"; // Branch name
 
 unsigned long lastSwitchTime = 0, timeDifference = 0;
 double positionDifference = 0.0;
-char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "", logging[100] = "";
+char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "";
 char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";  
+char logging[130];
 double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
+
 bool isMissionMode = true;
 bool isWakedUpFromLightSleep = false;
 bool isWakedUpFromDeepSleep = false;
@@ -196,12 +198,13 @@ void processPosition() {
   snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f", positionDifference);
   
   // Read MPU6050 values and append to logging variable
-  readMPU6050(logging);
-  
+  readMPU6050();  // Read accelerometer values
+  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.2f;%.2f;%.2f", accelX, accelY, accelZ);
   // if (isMissionMode) {
   // strcat(logging, ";mission\n");
   // } else {
   // strcat(logging, ";station\n");
+  // }  // strcat(logging, ";station\n");
   // }
 
   // Ersetzen von '.' durch ',' in logging um Zahlen in die CSV-Datei zu schreiben
@@ -211,7 +214,7 @@ void processPosition() {
     }
   }
 
-  
+  strcat(logging, "\n"); // Füge einen Zeilenumbruch hinzu
 
   // Debug-Ausgabe
   Serial.print("new logging: ");
