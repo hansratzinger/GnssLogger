@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <deque>
+#include "my_Helpers.h"
 
 void enableLightSleep(unsigned long seconds);
 void enableDeepSleep(unsigned long seconds);

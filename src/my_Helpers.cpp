@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <map>
-#include "Morse_LED.h"
+#include "my_Helpers.h"
 
 // Define the Morse code for each character
 std::map<char, String> morseCode = {
@@ -13,6 +13,9 @@ std::map<char, String> morseCode = {
   {'5', "....."}, {'6', "-...."}, {'7', "--..."}, {'8', "---.."}, {'9', "----."},
   {'0', "-----"}, {' ', " "}
 };
+
+unsigned long previousMillis = 0; // Speichert den letzten Zeitpunkt
+const long interval = 1000; // Intervallzeit in Millisekunden
 
 // Funktion zum Blinken der LED im Morse-Code-Rhythmus
 /**
@@ -48,11 +51,11 @@ void blinkMorseCode(const String &text, int ledPin, int repeatCount, bool TEST) 
         for (char m : code) {
           if (m == '.') {
             digitalWrite(ledPin, HIGH);
-            delay(200); // Punkt: 200 ms
+            myDelay(200,TEST); // Punkt: 200 ms
             digitalWrite(ledPin, LOW);
           } else if (m == '-') {
             digitalWrite(ledPin, HIGH);
-            delay(500); // Strich: 500 ms
+            myDelay(500,TEST); // Strich: 500 ms
             digitalWrite(ledPin, LOW);
           }
           delay(200); // Pause zwischen Punkten und Strichen
@@ -105,4 +108,23 @@ void ledMode(bool mode, bool TEST) {
     ledON(RED_LED_PIN, TEST);
     ledOFF(GREEN_LED_PIN, TEST);
   }
+}
+
+// mydelayTime in msec, TEST = true -> delay, TEST = false -> no delay
+void myDelay(unsigned long mydelayTime, bool TEST) {
+  if (!TEST) {
+    return;
+  }  
+  unsigned long currentMillis = millis();
+  while (millis() - currentMillis < mydelayTime) {
+    // Warten
+  }
+}
+
+void appendText(char* text, const char* toappendText) {
+    strcat(text, toappendText); // Fügt 'text' an 'base' an
+
+    // Verwendung
+    // char message[50] = "Hello";
+    // appendText(message, " World!");
 }

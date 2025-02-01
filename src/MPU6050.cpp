@@ -1,4 +1,5 @@
 #include "MPU6050.h"
+#include "my_Helpers.h"
 
 Adafruit_MPU6050 mpu;
 
@@ -9,7 +10,7 @@ void setupMPU6050() {
     if (!mpu.begin()) {
         Serial.println("Failed to find MPU6050 chip");
         while (1) {
-            delay(10);
+            myDelay(10,0);
         }
     }
     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
@@ -38,7 +39,7 @@ void calibrateMPU6050() {
         gyroSum[1] += g.gyro.y;
         gyroSum[2] += g.gyro.z;
 
-        delay(10);
+        myDelay(10,0);
     }
 
     accelOffsets[0] = accelSum[0] / numReadings;
@@ -60,7 +61,7 @@ void calibrateMPU6050() {
     Serial.println(gyroOffsets[2]);
 }
 
-void readMPU6050(char* logging) {
+char* readMPU6050(char* logging) {
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
 
@@ -74,7 +75,7 @@ void readMPU6050(char* logging) {
     float gyroZ = g.gyro.z - gyroOffsets[2];
 
     // Format the accelerometer values and append to the logging variable
-    snprintf(logging + strlen(logging), sizeof(logging)- strlen(logging), "; Accel: [%.2f; %.2f; %.2f]",
+    snprintf(logging + strlen(logging), sizeof(logging)- strlen(logging), ";[%.2f; %.2f; %.2f\n]",
              accelX, accelY, accelZ);
 
     // Print the accelerometer values to the Serial Monitor
@@ -86,4 +87,6 @@ void readMPU6050(char* logging) {
     Serial.print("Gyro X: "); Serial.print(gyroX); Serial.print(" rad/s, ");
     Serial.print("Gyro Y: "); Serial.print(gyroY); Serial.print(" rad/s, ");
     Serial.print("Gyro Z: "); Serial.print(gyroZ); Serial.println(" rad/s");
+
+    return logging;
 }

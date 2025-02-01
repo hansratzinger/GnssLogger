@@ -6,7 +6,7 @@
 #include <Wire.h>
 
 void setupMPU6050();
-void readMPU6050(char* logging);
+char* readMPU6050(char* logging);
 void calibrateMPU6050();
 
 #endif // MPU6050_H

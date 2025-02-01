@@ -1,7 +1,7 @@
 #include "Sleep.h"
 #include "GNSS_module.h" // Einbinden der GNSS-Modul-Header-Datei
 #include <Arduino.h>     // Einbinden der Arduino-Header-Datei für String-Typ
-#include "Morse_LED.h"   // Einbinden der Morse_LED-Header-Datei
+#include "my_Helpers.h"   // Einbinden der Morse_LED-Header-Datei
 #include <deque>
 
 extern const bool TEST; // in main.cpp definiert für Testzwecke
@@ -13,9 +13,9 @@ extern RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
 // Funktion zur Aktivierung des Light-Sleep-Modus
 void enableLightSleep(unsigned long seconds)
 {
-  blinkMorseCode("A", RED_LED_PIN, 1,TEST);
+  blinkMorseCode("A", GREEN_LED_PIN, 1,TEST);
   debugPrintln("Light-Sleep-Modus aktiviert");
-  delay(100);                                       // Warte 100 Millisekunden
+  myDelay(100,TEST);                                       // Warte 100 Millisekunden
   esp_sleep_enable_timer_wakeup(seconds * 1000000); // Zeit in Mikrosekunden
   esp_light_sleep_start();
 }
@@ -25,7 +25,7 @@ void enableDeepSleep(unsigned long seconds)
 {
   blinkMorseCode("J", RED_LED_PIN, 1,TEST);
   debugPrintln("Deep-Sleep-Modus aktiviert");
-  delay(100);                                       // Warte 100 Millisekunden
+  myDelay(100,TEST);                                      // Warte 100 Millisekunden
   esp_sleep_enable_timer_wakeup(seconds * 1000000); // Zeit in Mikrosekunden
   esp_deep_sleep_start();
 }
