@@ -5,7 +5,7 @@ Adafruit_MPU6050 mpu;
 
 float accelOffsets[3] = {0, 0, 0};
 float gyroOffsets[3] = {0, 0, 0};
-float accelX = 0, accelY = 0, accelZ = 0, gyroX = 0, gyroY = 0, gyroZ = 0;
+float accelX = 0, accelY = 0, accelZ = 0, gyroX = 0, gyroY = 0, gyroZ = 0, temp = 0;
 
 void setupMPU6050() {
     if (!mpu.begin()) {
@@ -63,8 +63,8 @@ void calibrateMPU6050() {
 }
 
 void readMPU6050() {
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
+    sensors_event_t a, g, tempEvent;
+    mpu.getEvent(&a, &g, &tempEvent);
 
     // Apply offsets to the accelerometer and gyroscope values
     accelX = a.acceleration.x - accelOffsets[0];
@@ -74,4 +74,8 @@ void readMPU6050() {
     gyroX = g.gyro.x - gyroOffsets[0];
     gyroY = g.gyro.y - gyroOffsets[1];
     gyroZ = g.gyro.z - gyroOffsets[2];
+
+ 
+    temp = tempEvent.temperature;
+
 }

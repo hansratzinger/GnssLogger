@@ -5,8 +5,8 @@
 #include <deque>
 #include "my_Helpers.h"
 
-void enableLightSleep(unsigned long seconds);
-void enableDeepSleep(unsigned long seconds);
+void enableLightSleep(int millisec);
+void enableDeepSleep(int millisec);
 void enableModemSleep();
 void disableModemSleep();
 void saveStationPositionsToRTC(const std::deque<std::pair<double, double>>& stationPositions);

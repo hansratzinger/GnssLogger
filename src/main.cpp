@@ -110,7 +110,7 @@ unsigned long currentTime = 0;
 const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
 const int mydelayTime = 250; // LED blink mydelay time
 // const int switchTime = 50; // Zeitdifferenz zwischen Positionen in msec
-const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;acc/x;acc/y;acc/z\n";
+const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;acc/x;acc/y;acc/z;gyro/x;gyro/y;gyro/z;temp/C\n";
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -199,7 +199,7 @@ void processPosition() {
   
   // Read MPU6050 values and append to logging variable
   readMPU6050();  // Read accelerometer values
-  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.2f;%.2f;%.2f", accelX, accelY, accelZ);
+  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f", accelX, accelY, accelZ,gyroX, gyroY, gyroZ, temp);
   // if (isMissionMode) {
   // strcat(logging, ";mission\n");
   // } else {
@@ -304,7 +304,7 @@ void loop() {
     gps.encode(gpsSerial.read());
   }
   
-  currentTime = millis();  
+  // currentTime = millis();  
   // if (currentTime - lastPositionTime >= switchTime) {// Wartezeit zwischen den Positionen
     if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
       // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
@@ -388,7 +388,7 @@ void loop() {
           // }
         // }
         // Aktivieren des Light-Sleep-Modus im Mission-Modus
-        enableLightSleep(sleepingTimeLightSleep);
+        // enableLightSleep(sleepingTimeLightSleep);
       // } 
       // else {  // Station-Modus
       //   // Überprüfen, ob die aktuelle Position außerhalb des doppelten Radius der stationPositions liegt

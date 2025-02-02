@@ -9,6 +9,6 @@ void setupMPU6050();
 void readMPU6050();
 void calibrateMPU6050();
 
-extern float accelX, accelY, accelZ, gyroX, gyroY, gyroZ;
+extern float accelX, accelY, accelZ, gyroX, gyroY, gyroZ, temp;
 
 #endif // MPU6050_H
