@@ -51,11 +51,11 @@ void blinkMorseCode(const String &text, int ledPin, int repeatCount, bool TEST) 
         for (char m : code) {
           if (m == '.') {
             digitalWrite(ledPin, HIGH);
-            myDelay(200,TEST); // Punkt: 200 ms
+            mydelay(200,TEST); // Punkt: 200 ms
             digitalWrite(ledPin, LOW);
           } else if (m == '-') {
             digitalWrite(ledPin, HIGH);
-            myDelay(500,TEST); // Strich: 500 ms
+            mydelay(500,TEST); // Strich: 500 ms
             digitalWrite(ledPin, LOW);
           }
           delay(200); // Pause zwischen Punkten und Strichen
@@ -111,12 +111,12 @@ void ledMode(bool mode, bool TEST) {
 }
 
 // mydelayTime in msec, TEST = true -> delay, TEST = false -> no delay
-void myDelay(unsigned long mydelayTime, bool TEST) {
+void mydelay(unsigned long mydelayTimeMillis, bool TEST) {
   if (!TEST) {
     return;
   }  
   unsigned long currentMillis = millis();
-  while (millis() - currentMillis < mydelayTime) {
+  while (millis() - currentMillis < mydelayTimeMillis) {
     // Warten
   }
 }

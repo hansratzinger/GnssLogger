@@ -11,7 +11,7 @@ void setupMPU6050() {
     if (!mpu.begin()) {
         Serial.println("Failed to find MPU6050 chip");
         while (1) {
-            myDelay(10,0);
+            mydelay(10,0);
         }
     }
     mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
@@ -40,7 +40,7 @@ void calibrateMPU6050() {
         gyroSum[1] += g.gyro.y;
         gyroSum[2] += g.gyro.z;
 
-        myDelay(10,0);
+        mydelay(10,0);
     }
 
     accelOffsets[0] = accelSum[0] / numReadings;
