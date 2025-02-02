@@ -259,6 +259,11 @@ void setup() {
     isSDcardReady = true;
     Serial.println("SD card initialized");
   }
+
+  if (isSDcardReady) {
+    listDir(SD, "/", 0);
+    }
+
   // Initialize the MPU6050
   setupMPU6050();
 

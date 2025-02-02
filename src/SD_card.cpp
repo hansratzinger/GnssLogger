@@ -278,30 +278,26 @@ bool initializeSDCard() {
   if (!SD.begin()) {
     debugPrintln("Card Mount Failed");
     return false;
-  }
-  uint8_t cardType = SD.cardType();
+  } else {
+      debugPrintln("Card Mount Success");
+      uint8_t cardType = SD.cardType();
+      if (cardType == CARD_NONE) {
+      debugPrintln("No SD card attached");
+      return false;
+    } else {
+      debugPrintln("SD Card Type: ");
+      if (cardType == CARD_MMC) {
+        debugPrintln("MMC");
+      } else if (cardType == CARD_SD) {
+        debugPrintln("SDSC");
+      } else if (cardType == CARD_SDHC) {
+        debugPrintln("SDHC");
+      } else if (cardType == CARD_UNKNOWN) {
+        debugPrintln("UNKNOWN CARD");
+      }
+    }
 
-  if (cardType == CARD_NONE) {
-    debugPrintln("No SD card attached");
-    return false;
+    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
   }
-
-  debugPrint("SD Card Type: ");
-  if (cardType == CARD_MMC) {
-    debugPrintln("MMC");
-  } else if (cardType == CARD_SD) {
-    debugPrintln("SDSC");
-  } else if (cardType == CARD_SDHC) {
-    debugPrintln("SDHC");
-  } else if (cardType == CARD_UNKNOWN) {
-    debugPrintln("UNKNOWN CARD");
-  } else if (cardType == CARD_NONE) {
-    debugPrintln("No SD card attached");
-    return false;
-  }
-  
-  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-  debugPrintln("SD Card Size: " + String(cardSize) + "MB");
-
-  listDir(SD, "/", 0);
-}
+  return true;
+} 
