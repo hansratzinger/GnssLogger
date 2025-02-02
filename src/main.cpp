@@ -58,7 +58,7 @@ const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
 const String BRANCH="release 1.2.2 MPU6050"; // Branch name
-const String RELEASE="1.2.2"; // Branch name
+const String RELEASE="1.2.4"; // Branch name
 
 // Deklaration von Variablen
 
@@ -242,7 +242,10 @@ void setup() {
 
   // Serial Monitor
   Serial.begin(115200);
+  gpsSerial.begin(115200, SERIAL_8N1, RXD2, TXD2); // Serielle Schnittstelle für GNSS-Modul
 
+  Serial.println("GNSS serial connection started...");
+  
   // WiFi und Bluetooth ausschalten
   WiFi.mode(WIFI_OFF);
   btStop();
@@ -317,16 +320,33 @@ void loop() {
   if (isSDcardReady) { 
     // Read data from the GPS module
     while (gpsSerial.available() > 0) {
-      blinkMorseCode("e", GREEN_LED_PIN, 1,TEST); // Green LED for searching GPS data
-      gps.encode(gpsSerial.read());
+      // blinkMorseCode("e", GREEN_LED_PIN, 1,TEST); // Green LED for searching GPS data
+      char c = gpsSerial.read();
+      Serial.print(c); // Ausgabe der empfangenen Daten auf dem seriellen Monitor
+
+      // gps.encode(gpsSerial.read());
+      gps.encode(c);
     }
-    ledON(GREEN_LED_PIN,TEST); // Green LED for position processing
+    // if ((TEST) && (gps.location.isUpdated())) {
+    //     Serial.print("Latitude: ");
+    //     Serial.print(gps.location.lat(), 6);
+    //     Serial.print(" Longitude: ");
+    //     Serial.print(gps.location.lng(), 6);
+    //     Serial.print(" HDOP: ");
+    //     Serial.println(gps.hdop.hdop());
+    // }
     // currentTime = millis();  
     // if (currentTime - lastPositionTime >= switchTime) {// Wartezeit zwischen den Positionen
-    // if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
-      // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
+    if ((gps.location.isUpdated()) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
+      if (TEST) {
+        Serial.print("Latitude: ");
+        Serial.print(gps.location.lat(), 6);
+        Serial.print(" Longitude: ");
+        Serial.print(gps.location.lng(), 6);
+        Serial.print(" HDOP: ");
+        Serial.println(gps.hdop.hdop());
+      }
       // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
-      // ledOFF(RED_LED_PIN,TEST); // setup finished
       ledON(GREEN_LED_PIN,TEST); // position processing
       // Read MPU6050 values and append to logging variable
       processPosition();
@@ -458,11 +478,12 @@ void loop() {
       //   }
       //  }
       ledOFF(GREEN_LED_PIN,TEST); // position processed finished
-    // }
+    }
   } else {
-    Serial.println("SD card not ready, System will reboot in 5 seconds");
-    blinkMorseCode("SOS", RED_LED_PIN, 1,TEST); // Rote LED blinkt 3 mal
-    mydelay(5000,1);
-    esp_restart();
+      Serial.println("SD card not ready, System will reboot in 5 seconds");
+      blinkMorseCode("SOS", RED_LED_PIN, 1,TEST); // Rote LED blinkt 3 mal
+      mydelay(5000,1);
+      esp_restart();
   }
 }
+
