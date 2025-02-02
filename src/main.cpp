@@ -99,17 +99,17 @@ RtcData rtcData;
 
 const bool TEST = true; // Definition der Konstante TEST
 
-const unsigned long switchInterval = 5000; // 5 Sekunden
-const double circleAroundPosition = 4; // Radius in Metern
-const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
-const unsigned long sleepingTimeDeepSleep = 7; // 5 Sekunden
-const double hdopTreshold = 1; // HDOP-Schwellenwert
+// const int switchInterval = 5000; // 5 Sekunden
+const int circleAroundPosition = 4; // Radius in Metern
+const int sleepingTimeLightSleep = 750; // milliSekunden
+// const int sleepingTimeDeepSleep = 7000; // milliSekunden
+const float hdopTreshold = 1; // HDOP-Schwellenwert
 
 unsigned long lastPositionTime = 0;
 unsigned long currentTime = 0;
 const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
-const unsigned long mydelayTime = 250; // LED blink mydelay time
-const unsigned long switchTime = 500; // Zeitdifferenz zwischen Positionen in msec
+const int mydelayTime = 250; // LED blink mydelay time
+// const int switchTime = 50; // Zeitdifferenz zwischen Positionen in msec
 const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;acc/x;acc/y;acc/z\n";
 
 // The TinyGPS++ object
@@ -409,11 +409,11 @@ void loop() {
       //     saveStationPositionsToRTC(stationPositions);
       //     }
             
-      //     // Save the last values
-      //     strcpy(gpstimeLast, gpstime);
-      //     strcpy(dateLast, date);
-      //     strcpy(latLast, lat);
-      //     strcpy(lonLast, lon);
+          // Save the last values
+          strcpy(gpstimeLast, gpstime);
+          strcpy(dateLast, date);
+          strcpy(latLast, lat);
+          strcpy(lonLast, lon);
           
       //     debugPrintln("Switched to Deep Sleep Mode");
       //     Serial.print("gpstimeLast: ");
