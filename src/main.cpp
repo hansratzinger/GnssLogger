@@ -28,7 +28,7 @@
 // -  the stdio.h library for standard input and output functions.
 // -  the string.h library for string manipulation functions.
 // -  the time.h library for time-related functions.
-// Hans Ratzinger 2025-01-26
+// Hans Ratzinger 2025-01-30
 // https://github.com/hansratzinger/GnssLogger
 // ----------------------------------------------------------------------------------------------
 #include <Wire.h>
@@ -55,47 +55,59 @@
 // Define the GPIO pins for the LEDs
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
-
-const String BRANCH="main"; // Branch name
-const String RELEASE="1.0.2"; // Branch name
+const String BRANCH="1.1.0"; // Branch name
+const String RELEASE="1.1.0"; // Branch name
+const bool TEST = true; // Definition der Konstante TEST
+const unsigned long switchInterval = 0.5; // Sekunden
+const double circleAroundPosition = 0.3; // Radius in Metern
+const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
+const unsigned long sleepingTimeDeepSleep = 5; // 5 Sekunden
+const double hdopTreshold = 1; // HDOP-Schwellenwert
+const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
+const unsigned long delayTime = 100; // LED blink delay time
+const unsigned long switchTime = 500; // Zeitdifferenz-Schwellenwert in Sekunden
+const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;Mission\n";
 
 // Deklaration von Variablen
 
 unsigned long lastSwitchTime = 0, timeDifference = 0;
-double positionDifference = 0.0;
+
 char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "", logging[100] = "";
 char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";  
+
+double positionDifference = 0.0;
 double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
+double gpsLat = 0.0, gpsLon = 0.0; // for debugging
+double gpsLatLast = 0.0, gpsLonLast = 0.0; // for debugging
+
+unsigned long currentTime = 0;
+unsigned long lastPositionTime = 0;
+
 bool isMissionMode = true;
 bool isWakedUpFromLightSleep = false;
 bool isWakedUpFromDeepSleep = false;
+bool isOutOfRange = false;
+
+String Logging = ""; // Debugging
 
 RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
+
 // Struktur für RTC-Speicher
 struct RtcData {
   char gpstimeLast[10];
   char dateLast[11];
   char latLast[15];
   char lonLast[15];
+  double gpsLatLast;
+  double gpsLonLast;
+  double gpsLat;
+  double gpsLon;
   bool isMissionMode;
   unsigned long timeDifference;
 };
 
 // RTC-Speicher-Variable für die Struktur
 RTC_DATA_ATTR RtcData rtcData;
-
-const bool TEST = true; // Definition der Konstante TEST
-
-const unsigned long switchInterval = 5000; // 5 Sekunden
-const double circleAroundPosition = 4; // Radius in Metern
-const unsigned long sleepingTimeLightSleep = 2; // 2 Sekunden
-const unsigned long sleepingTimeDeepSleep = 7; // 5 Sekunden
-const double hdopTreshold = 1; // HDOP-Schwellenwert
-
-const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
-const unsigned long delayTime = 500; // LED blink delay time
-const unsigned long switchTime = 1000; // Zeitdifferenz-Schwellenwert in Sekunden
-const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;Mission\n";
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -157,12 +169,17 @@ void processPosition() {
   snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
   snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
 
+  // Debug-Ausgabe
+  gpsLatLast = gpsLat;
+  gpsLonLast = gpsLon;
+  gpsLat = atof(lat);
+  gpsLon = atof(lon);
+
   // Bestimme die Himmelsrichtung
-// filepath: /c:/esp32/GnssLogger/src/main.cpp
-char directionLatChar = getDirectionOfLat(gps.location.lat());
-char directionLngChar = getDirectionOfLng(gps.location.lng());
-snprintf(directionLat, sizeof(directionLat), "%c", directionLatChar);
-snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
+  char directionLatChar = getDirectionOfLat(gps.location.lat());
+  char directionLngChar = getDirectionOfLng(gps.location.lng());
+  snprintf(directionLat, sizeof(directionLat), "%c", directionLatChar);
+  snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
 
   snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
   snprintf(date, sizeof(date), "%04d-%02d-%02d", gps.date.year(), gps.date.month(), gps.date.day());
@@ -205,6 +222,8 @@ snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
   // Speichern der Daten in der Datei
   // String fileName = generateFileName(gps);
   // appendFile(SD, fileName.c_str(), logging);
+
+  Logging = logging; // Debugging
   writeToCSV(logging);
 
   // Leeren des logging-Arrays
@@ -283,8 +302,8 @@ void loop() {
     static unsigned long lastPositionTime = 0;
     gps.encode(gpsSerial.read());
   }
-  unsigned long currentTime = millis();
-  unsigned long lastPositionTime = 0;
+  currentTime = millis();
+  lastPositionTime = 0;
   if (currentTime - lastPositionTime >= switchTime) { // Wartezeit von mindestens 0,25 Sekunde
     lastPositionTime = currentTime;
     if ((gps.location.isUpdated()) && (gps.hdop.hdop() < hdopTreshold) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
@@ -315,18 +334,26 @@ void loop() {
         // Warte auf die nächste gültige Position
         while (gpsSerial.available() > 0) {
           gps.encode(gpsSerial.read());
-        }
-        if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
-          double newLat = gps.location.lat();
-          double newLon = gps.location.lng();
-          if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
-            stationPositions.push_back(std::make_pair(newLat, newLon));
-            debugPrintln("Added position to stationPositions: " + String(newLat, 6) + ", " + String(newLon, 6));
-          } else {
-            debugPrintln("Position out of range: " + String(newLat, 6) + ", " + String(newLon, 6));
-            stationPositions.clear();
-            stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
+        
+          if (gps.location.isUpdated() && gps.hdop.hdop() < hdopTreshold && gps.date.year() != 2000 && gps.date.month() != 0 && gps.date.day() != 0 && gps.time.hour() != 0 && gps.time.minute() != 0 && gps.time.second() != 0) {
+            double newLat = gps.location.lat();
+            double newLon = gps.location.lng();
+            if (isWithinRange(newLat, newLon, stationPositions.back().first, stationPositions.back().second, circleAroundPosition)) {
+              stationPositions.push_back(std::make_pair(newLat, newLon));
+              debugPrintln("Added position to stationPositions: " + String(newLat, 6) + ", " + String(newLon, 6));
+            } else {
+              debugPrintln("Position out of range: " + String(newLat, 6) + ", " + String(newLon, 6));
+              stationPositions.clear();
+              stationPositions.push_back(std::make_pair(atof(lat), atof(lon)));
+              isOutOfRange = true;              
+              break;
+            }
           }
+        }  
+        if (isOutOfRange) {
+          isMissionMode = true;
+          ledMode(isMissionMode,TEST); // Grüne LED für Mission-Modus, Rote LED für Station-Modus
+          break;
         }
       }
       
@@ -346,15 +373,13 @@ void loop() {
     if (isMissionMode) {
       // Schreibe nur im Mission-Modus auf die SD-Karte
       if (strcmp(date, "2000/00/00") != 0) {
-        // Schalte die LEDs entsprechend dem Modus
-        if (TEST) {
-          blinkMorseCode("G", GREEN_LED_PIN, 1,TEST); // Grüne LED blinkt im Mission-Modus
-        }
+        // Schreibe die Daten in die Datei
+        writeToCSV(logging);     
       }
-      if (millis() - lastSwitchTime >= switchInterval) {
+      if (millis() - lastSwitchTime >= switchInterval*1000) {
         bool withinRange = false;
         for (const auto& pos : stationPositions) {
-          if (isWithinRange(atof(lat), atof(lon), pos.first, pos.second, circleAroundPosition)) {
+          if (isWithinRange(atof(lat), atof(lon), atof(latLast), atof(lonLast), circleAroundPosition)) {
             withinRange = true;
             break;
           }
@@ -416,9 +441,12 @@ void loop() {
         strcpy(rtcData.lonLast, lonLast);
         rtcData.isMissionMode = isMissionMode;
         rtcData.timeDifference = timeDifference;
-        enableDeepSleep(sleepingTimeDeepSleep);
+        // enableDeepSleep(sleepingTimeDeepSleep);
       }
      }
     }
   }
+  strcpy(latLast, lat);
+  strcpy(lonLast, lon);
+
 }
