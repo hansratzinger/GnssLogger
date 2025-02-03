@@ -57,8 +57,8 @@
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
-const String BRANCH="release 1.2.2 MPU6050"; // Branch name
-const String RELEASE="1.3.0"; // Branch name
+const String BRANCH="release 2.0 GSM"; // Branch name
+const String RELEASE="2.0.0"; // Branch name
 
 // Deklaration von Variablen
 
