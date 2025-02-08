@@ -26,12 +26,12 @@ const char apn[]  = "web";     //SET TO YOUR APN
 const char gprsUser[] = "web@telering.at";
 const char gprsPass[] = "web";
 
-// Set phone number, if you want to test SMS
-// Set a recipient phone number to test sending SMS (it must be in international format including the "+" sign)
-#define SMS_TARGET  "+436502363174"
 
+
+#include <Arduino.h>
 #include <TinyGsmClient.h>
 #include <SPI.h>
+#include <Wire.h>
 #include <SD.h>
 #include <Ticker.h>
 
@@ -45,7 +45,7 @@ const char gprsPass[] = "web";
 
 #define uS_TO_S_FACTOR 1000000ULL  // Conversion factor for micro seconds to seconds
 #define TIME_TO_SLEEP  60          // Time ESP32 will go to sleep (in seconds)
-
+#define GSM_NL "\r\n" 
 #define UART_BAUD   115200
 #define PIN_DTR     25
 #define PIN_TX      27
@@ -60,6 +60,10 @@ const char gprsPass[] = "web";
 
 int counter, lastIndex, numberOfPieces = 24;
 String pieces[24], input;
+
+// Set phone number, if you want to test SMS
+// Set a recipient phone number to test sending SMS (it must be in international format including the "+" sign)
+#define SMS_TARGET  "+4367687837602"
 
 void setup(){
   // Set console baud rate
@@ -151,19 +155,28 @@ void loop(){
     DBG("setPreferredMode  false ");
     return ;
   }
-  delay(200);
+  
 
+  // *-*-*-*-*-*-*-**-*-**-**-*-*
+ modem.sendAT("+CBANDCFG=? ");
+
+  Serial.println("AT+CGDCONT?");
   /*AT+CBANDCFG=<mode>,<band>[,<band>…]
    * <mode> "CAT-M"   "NB-IOT"
    * <band>  The value of <band> must is in the band list of getting from  AT+CBANDCFG=?
    * For example, my SIM card carrier "NB-iot" supports B8.  I will configure +CBANDCFG= "Nb-iot ",8
    */
-  /* modem.sendAT("+CBANDCFG=\"NB-IOT\",8 ");*/
+   modem.sendAT("+CBANDCFG=\"NB-IOT\",8 ");
   
-  /* if (modem.waitResponse(10000L) != 1) {
+   if (modem.waitResponse(10000L) != 1) {
        DBG(" +CBANDCFG=\"NB-IOT\" ");
-   }*/
-   delay(200);
+   }
+ 
+
+  // *-*-*-*-*-*-*-**-*-**-**-*-*
+
+
+   delay(20000);
 
   modem.sendAT("+CFUN=1 ");
   if (modem.waitResponse(10000L) != 1) {
@@ -304,7 +317,7 @@ void loop(){
 
 
   // --------TESTING SENDING SMS--------
-  res = modem.sendSMS(SMS_TARGET, String("Hello from ") + imei);
+  res = modem.sendSMS(SMS_TARGET, String("Hello this is London RNLI Tower Staion from ") + imei);
   DBG("SMS:", res ? "OK" : "fail");
 
 

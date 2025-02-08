@@ -1,0 +1,67 @@
+
+21:14:26:234 -> 
+21:14:26:234 -> rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+21:14:26:243 -> configsip: 0, SPIWP:0xee
+21:14:26:243 -> clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+21:14:26:245 -> mode:DIO, clock div:2
+21:14:26:250 -> load:0x3fff0030,len:1184
+21:14:26:250 -> load:0x40078000,len:13232
+21:14:26:255 -> load:0x40080400,len:3028
+21:14:26:255 -> entry 0x400805e4
+21:14:27:446 -> ========SDCard Detect.======
+21:14:27:951 -> [  1542][E][sd_diskio.cpp:806] sdcard_mount(): f_mount failed: (3) The physical drive cannot work
+21:14:28:459 -> [  2051][E][sd_diskio.cpp:126] sdSelectCard(): Select Failed
+21:14:28:459 -> SDCard MOUNT FAIL
+21:14:28:464 -> ===========================
+21:14:28:464 -> /**********************************************************/
+21:14:28:470 -> To initialize the network test, please make sure your LTE 
+21:14:28:475 -> antenna has been connected to the SIM interface on the board.
+21:14:28:481 -> /**********************************************************/
+21:14:28:485 -> 
+21:14:28:485 -> 
+21:14:38:521 -> ========INIT========
+21:14:38:812 -> ========SIMCOMATI======
+21:14:38:844 -> 
+21:14:38:844 -> Revision:1529B08SIM7000G
+21:14:38:844 -> CSUB:V01
+21:14:38:844 -> APRev:1529B08SIM7000,V01
+21:14:38:849 -> QCN:MDM9206_TX3.0.SIM7000G_P1.03_20220415
+21:14:38:849 -> IMEI:869951036750879
+21:14:38:854 -> 
+21:14:38:854 -> OK
+21:14:38:854 -> 
+21:14:38:854 -> =======================
+21:14:38:854 -> =====Preferred mode selection=====
+21:14:38:860 -> 
+21:14:38:860 -> +CNMP: 2
+21:14:38:860 -> 
+21:14:38:860 -> OK
+21:14:38:860 -> 
+21:14:38:860 -> =======================
+21:14:38:860 -> =====Preferred selection between CAT-M and NB-IoT=====
+21:14:38:865 -> 
+21:14:38:865 -> +CMNB: 2
+21:14:38:865 -> 
+21:14:38:865 -> OK
+21:14:38:865 -> 
+21:14:38:865 -> =======================
+21:14:38:875 -> Modem Name: SIMCOM_Ltd SIMCOM_SIM7000G
+21:14:38:881 -> Modem Info: SIM7000G R1529
+21:14:38:984 -> Try 2 method
+21:14:42:979 -> Signal: 99 isNetworkConnected: NO CONNECT
+21:14:44:001 -> Signal: 21 isNetworkConnected: CONNECT
+21:14:44:007 -> 
+21:14:44:007 -> Device is connected .
+21:14:44:007 -> 
+21:14:44:007 -> =====Inquiring UE system information=====
+21:14:44:020 -> 
+21:14:44:020 -> +CPSI: GSM,Online,232-03,0x2f1c,24047,18 EGSM 900,-73,0,34-34
+21:14:44:025 -> 
+21:14:44:025 -> OK
+21:14:44:025 -> 
+21:14:44:025 -> /**********************************************************/
+21:14:44:031 -> After the network test is complete, please enter the  
+21:14:44:031 -> AT command in the serial terminal.
+21:14:44:036 -> /**********************************************************/
+21:14:44:040 -> 
+21:14:44:040 -> 
