@@ -79,9 +79,6 @@ char logging[130] = "";
 char gpsData[130] = "";
 double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
 
-
-bool isSDcardReady = false;
-
 const bool TEST = true; // Definition der Konstante TEST
 
 unsigned long lastPositionTime = 0;
@@ -96,6 +93,7 @@ TinyGPSPlus gps;
 
 // Create an instance of the HardwareSerial class for Serial 2
 HardwareSerial gpsSerial(2); // Initialisierung von gpsSerial
+
 
 // Funktion zur Berechnung der Zeitdifferenz zwischen gpstime und gpstimeLast
 unsigned long getTimeDifference(const char *gpstime, const char *gpstimeLast) {
@@ -254,29 +252,33 @@ void setup() {
   btStop();
   Serial.println("WiFi and Bluetooth turned off");
 
-  // Initialisiere die SD-Karte
-  if (!initializeSDCard()) {
-    isSDcardReady = false;
+  if (!initializeSDCard()) {  // Initialisiere die SD-Karte und überprüfe, ob sie bereit ist    
     Serial.println("SD card initialization failed");
-  } else {
-    isSDcardReady = true;
-    Serial.println("SD card initialized");
-  }
-
-  // Initialize the MPU6050
-  setupMPU6050();
-  Serial.println("MPU6050 initialized");
-
-  if (isSDcardReady) {
-    listDir(SD, "/", 0);
-    ledOFF(RED_LED_PIN,TEST); // Rote LED finished setup
-  } else {
     Serial.println("SD card not ready, System will reboot in 5 seconds");
     blinkMorseCode("SOS", RED_LED_PIN, 1,TEST); // Rote LED blinkt 3 mal
     vTaskDelay(2500 / portTICK_PERIOD_MS);
     esp_restart();
+  } else {  
+    listDir(SD, "/", 0);
+    ledOFF(RED_LED_PIN,TEST); // Rote LED finished setup
+    Serial.println("SD card initialized");
+    // Überprüfen Sie, ob die Datei debug.txt vorhanden ist
+    if (!SD.exists("/debug.txt")) {
+      // Datei existiert nicht, erstelle die Datei
+      File file = SD.open("/debug.txt", FILE_WRITE);
+      if (file) {
+        file.println("Debug file created"); 
+        file.close();
+      } else {
+        Serial.println("Failed to create debug file");
+      } 
+    }
   }
-
+  
+  // // Initialize the MPU6050
+  // setupMPU6050();
+  // Serial.println("MPU6050 initialized");
+  
   TaskHandle_t taskNavigationHandle = NULL;
   TaskHandle_t taskCommunicationHandle = NULL;
 

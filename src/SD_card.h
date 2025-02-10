@@ -4,6 +4,13 @@
 
 #include <FS.h>
 #include <Arduino.h>
+// Define the SPI pins for the SD card
+// #define SD_CS_PIN 5 // GPIO5 für CS (Chip Select) ESP32-WROOM-32D
+// GPIO5 für CS (Chip Select) SIM7000G ESP32-WROVER-32D
+#define SD_MISO             2
+#define SD_MOSI             15
+#define SD_SCLK             14
+#define SD_CS_PIN           13
 
 extern const bool TEST; // Deklaration der Konstante TEST
 

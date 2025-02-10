@@ -271,33 +271,31 @@ void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus 
 }
 
 bool initializeSDCard() {
-  // Start Serial 2 with the defined RX and TX pins and a baud rate of 9600
-  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2);
-  Serial.print("Serial 2 started at " + String(GPS_BAUD) + " baud rate");
-
-  if (!SD.begin()) {
-    debugPrintln("Card Mount Failed");
+  // Verzögerung hinzufügen, um der SD-Karte mehr Zeit zu geben
+  vTaskDelay(2000 / portTICK_PERIOD_MS);// 1 Sekunde Verzögerung
+  SPI.begin(SD_SCLK, SD_MISO, SD_MOSI);
+  // Initialisiere die SD-Karte
+  if (!SD.begin(SD_CS_PIN)) {
+    Serial.println("Card Mount Failed");
     return false;
   } else {
-      debugPrintln("Card Mount Success");
-      uint8_t cardType = SD.cardType();
-      if (cardType == CARD_NONE) {
-      debugPrintln("No SD card attached");
+    Serial.println("Card Mount Success");
+    uint8_t cardType = SD.cardType();
+    if (cardType == CARD_NONE) {
+      Serial.println("No SD card attached");
       return false;
     } else {
-      debugPrintln("SD Card Type: ");
+      Serial.print("SD Card Type: ");
       if (cardType == CARD_MMC) {
-        debugPrintln("MMC");
+        Serial.println("MMC");
       } else if (cardType == CARD_SD) {
-        debugPrintln("SDSC");
+        Serial.println("SDSC");
       } else if (cardType == CARD_SDHC) {
-        debugPrintln("SDHC");
+        Serial.println("SDHC");
       } else if (cardType == CARD_UNKNOWN) {
-        debugPrintln("UNKNOWN CARD");
+        Serial.println("UNKNOWN CARD");
       }
+      return true;
     }
-
-    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
   }
-  return true;
-} 
+}
