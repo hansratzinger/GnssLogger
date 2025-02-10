@@ -2,49 +2,57 @@
 // GNSSLogger  
 // This project uses the ESP32 Dev Module board and a GNSS module to log GPS data to an SD card.
 // The GNSS module is connected to the ESP32 via UART.
-// The ESP32 is put into deep sleep mode when the GNSS module is not in use.
-// The ESP32 wakes up from deep sleep mode every 5 seconds to check the GNSS module for new data.
+// // The ESP32 is put into deep sleep mode when the GNSS module is not in use.
+// // The ESP32 wakes up from deep sleep mode every 5 seconds to check the GNSS module for new data.
 // If the GNSS module has new data, the ESP32 processes the data and logs it to an SD card.
-// The ESP32 switches between mission mode and station mode based on the distance between the current position and the last position.
-// In station mode, the ESP32 logs the current position to the SD card and goes into deep sleep mode.
-// In mission mode, the ESP32 checks if the current position is within a certain radius of the station positions.
-// If the current position is within the radius, the ESP32 switches to station mode.
-// If the current position is outside the radius, the ESP32 logs the current position to the SD card and goes into deep sleep mode.
-// The ESP32 uses the RTC memory to store the last position, the last time, and the mode (mission or station).
+// // The ESP32 switches between mission mode and station mode based on the distance between the current position and the last position.
+// // In station mode, the ESP32 logs the current position to the SD card and goes into deep sleep mode.
+// // In mission mode, the ESP32 checks if the current position is within a certain radius of the station positions.
+// // If the current position is within the radius, the ESP32 switches to station mode.
+// // If the current position is outside the radius, the ESP32 logs the current position to the SD card and goes into deep sleep mode.
+// // The ESP32 uses the RTC memory to store the last position, the last time, and the mode (mission or station).
 // -  the SD card to log the GPS data in CSV format.
 // -  the built-in LED pins to indicate the mode (mission or station) with red and green LEDs.
 // -  the Morse_LED library to blink the LEDs in Morse code.
 // -  the GNSS_module library to process the GPS data.
 // -  the SD_card library to interact with the SD card.
-// -  the Sleep library to manage the sleep modes.
+// // -  the Sleep library to manage the sleep modes.
 // -  the TinyGPS++ library to parse the GPS data.
 // -  the WiFi library to turn off WiFi and Bluetooth.
 // -  the SPI library to communicate with the SD card.
 // -  the FS library to interact with the file system.
 // -  the Arduino.h library for general Arduino functions.
 // -  the HardwareSerial library to communicate with the GNSS module.
-// -  the esp_sleep library to manage the sleep modes.
-// -  the deque library to store the station positions.
+// // -  the esp_sleep library to manage the sleep modes.
+// // -  the deque library to store the station positions.
 // -  the stdio.h library for standard input and output functions.
 // -  the string.h library for string manipulation functions.
 // -  the time.h library for time-related functions.
-// Hans Ratzinger 2025-01-26
+// -  the Wire library to communicate with the MPU6050.
+// -  the MPU6050 library to read the accelerometer and gyroscope values.
+// -  the I2Cdev library to communicate with the MPU6050.
+// -  the Adafruit_MPU6050 library to read the accelerometer and gyroscope values.
+// -  the pins.h file to define the GPIO pins.
+// -  the my_Helpers.h file to define helper functions.
+// -  the freertos/FreeRTOS.h library to use FreeRTOS functions.
+// -  the freertos/task.h library to create tasks.
+// Hans Ratzinger 2025-02-10
+// Release 2.1.0
 // https://github.com/hansratzinger/GnssLogger
 // ----------------------------------------------------------------------------------------------
 #include <Wire.h>
-#include <esp_sleep.h>
-#include <deque>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include "esp_task_wdt.h"
 #include <WiFi.h>
 #include "GNSS_module.h"
 #include "SD_card.h"
-#include "Sleep.h"
 #include <my_Helpers.h>
 #include <SD.h>
 #include <SPI.h>
 #include <Arduino.h>
 #include "pins.h"
 #include <I2Cdev.h>
-#include <Adafruit_MPU6050.h>
 #include <MPU6050.h>
 
 
@@ -52,13 +60,14 @@
 #define RXD2 16
 #define TXD2 17
 #define GPS_BAUD 115200
+#define SERIALMONITOR_BAUD 115200
 
 // Define the GPIO pins for the LEDs
 const int RED_LED_PIN = 25; // station mode
 const int GREEN_LED_PIN = 26; // mission mode
 
-const String BRANCH="release-2.0-GSM"; // Branch name
-const String RELEASE="2.0.0"; // Branch name
+const String BRANCH="release-2.1-GSM-FreeRTOS"; // Branch name
+const String RELEASE="2.1.0"; // Branch name
 
 // Deklaration von Variablen
 
@@ -66,49 +75,18 @@ unsigned long lastSwitchTime = 0, timeDifference = 0;
 double positionDifference = 0.0;
 char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "";
 char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";  
-char logging[130];
+char logging[130] = "";
+char gpsData[130] = "";
 double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
 
-bool isMissionMode = true;
-bool isWakedUpFromLightSleep = false;
-bool isWakedUpFromDeepSleep = false;
+
 bool isSDcardReady = false;
-
-RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
-// Struktur für RTC-Speicher
-struct RtcData {
-    unsigned long timeDifference;
-    char gpstimeLast[10];
-    char dateLast[11];
-    char latLast[15];
-    char lonLast[15];
-    char speedLast[10];
-    char altitudeLast[10];
-    char hdopLast[10];
-    char satellitesLast[10];
-    char loggingLast[130];
-    char firstlineLast[100];
-    double distanceLast;
-    double latDifference;
-    double lonDifference;
-    bool isMissionMode;
-    bool isWakedUpFromLightSleep;
-    bool isWakedUpFromDeepSleep;
-};
-
-RtcData rtcData;
 
 const bool TEST = true; // Definition der Konstante TEST
 
-// const int switchInterval = 5000; // 5 Sekunden
-const int circleAroundPosition = 4; // Radius in Metern
-const int sleepingTimeLightSleep = 750; // milliSekunden
-// const int sleepingTimeDeepSleep = 7000; // milliSekunden
-const float hdopTreshold = 1; // HDOP-Schwellenwert
-
 unsigned long lastPositionTime = 0;
 unsigned long currentTime = 0;
-const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
+// const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
 const int mydelayTime = 250; // LED blink mydelay time
 // const int switchTime = 50; // Zeitdifferenz zwischen Positionen in msec
 const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;acc/x;acc/y;acc/z;gyro/x;gyro/y;gyro/z;temp/C\n";
@@ -119,14 +97,11 @@ TinyGPSPlus gps;
 // Create an instance of the HardwareSerial class for Serial 2
 HardwareSerial gpsSerial(2); // Initialisierung von gpsSerial
 
-// Deque zum Speichern der 10 Positionen des Station-Modus-Speichers
-std::deque<std::pair<double, double>> stationPositions;
-
 // Funktion zur Berechnung der Zeitdifferenz zwischen gpstime und gpstimeLast
 unsigned long getTimeDifference(const char *gpstime, const char *gpstimeLast) {
-  int hour1, minute1, second1;
-  int hour2, minute2, second2;
-
+  int hour1 = 0, minute1 = 0, second1 = 0;
+  int hour2 = 0, minute2 = 0, second2 = 0;
+ 
   sscanf(gpstime, "%d:%d:%d", &hour1, &minute1, &second1);
   sscanf(gpstimeLast, "%d:%d:%d", &hour2, &minute2, &second2);
 
@@ -139,23 +114,6 @@ unsigned long getTimeDifference(const char *gpstime, const char *gpstimeLast) {
     return time2 - time1;
   }
 }
-
-// Funktion zur Überprüfung, ob eine Position innerhalb eines bestimmten Radius liegt
-bool isWithinRange(double lat1, double lon1, double lat2, double lon2, double radius) {
-  double distance = calculateDistance(lat1, lon1, lat2, lon2);
-  debugPrint("Distance: " + String(distance) + " meters");
-  debugPrint(" Radius: " + String(radius) + " meters");
-  debugPrint("Lat: " + String(lat1, 6));
-  debugPrint("Lon: " + String(lat1, 6));
-  debugPrint("LatLast: " + String(lat2, 6));
-  debugPrintln("LonLast: " + String(lon2, 6));
-  
-  if (distance <= radius) {
-    return true;
-  } else {
-    return false; 
-  }
-} 
 
 void writeToCSV(const String& data) {
   // Generiere den Dateinamen basierend auf dem aktuellen Datum
@@ -221,100 +179,23 @@ void processPosition() {
   memset(logging, 0, sizeof(logging)); 
 }
 
-void setup() {
 
-    // Initialisiere die LED-Pins
-  pinMode(RED_LED_PIN, OUTPUT);
-  pinMode(GREEN_LED_PIN, OUTPUT);
-  digitalWrite(RED_LED_PIN, LOW);
-  digitalWrite(GREEN_LED_PIN, LOW);
-
-  ledON(RED_LED_PIN,TEST); // Rote LED starting setup
-
-  // Serial Monitor
-  Serial.begin(115200);
-  gpsSerial.begin(115200, SERIAL_8N1, RXD2, TXD2); // Serielle Schnittstelle für GNSS-Modul
-
-  Serial.println("GNSS serial connection started...");
-  
-  // WiFi und Bluetooth ausschalten
-  WiFi.mode(WIFI_OFF);
-  btStop();
-
-  // Initialisiere die SD-Karte
-  if (!initializeSDCard()) {
-    isSDcardReady = false;
-    Serial.println("SD card initialization failed");
-  } else {
-    isSDcardReady = true;
-    Serial.println("SD card initialized");
-  }
-
-  if (isSDcardReady) {
-    listDir(SD, "/", 0);
-    }
-
-  // Initialize the MPU6050
-  setupMPU6050();
-
-  // Überprüfen des Wakeup-Reasons
-  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-  switch (wakeup_reason) {
-    case ESP_SLEEP_WAKEUP_EXT0: 
-      Serial.println("Wakeup caused by external signal using RTC_IO");
-      break;
-    case ESP_SLEEP_WAKEUP_EXT1: 
-      Serial.println("Wakeup caused by external signal using RTC_CNTL");
-      break;
-    case ESP_SLEEP_WAKEUP_TIMER: 
-      Serial.println("Wakeup caused by timer");
-      isWakedUpFromDeepSleep = true;
-      break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD: 
-      Serial.println("Wakeup caused by touchpad");
-      break;
-    case ESP_SLEEP_WAKEUP_ULP: 
-      Serial.println("Wakeup caused by ULP program");
-      break;
-    default: 
-      Serial.println("Wakeup was not caused by deep sleep");
-      break;
-  }
-
-  // Debug-Ausgabe der geladenen Werte
-  Serial.print("LatLast: ");
-  Serial.print(rtcData.latLast);
-  Serial.print(", LonLast: ");
-  Serial.println(rtcData.lonLast);
-
-  if (isSDcardReady) { 
-    ledOFF(RED_LED_PIN,TEST); // Rote LED finished setup
-  }
-}
-
-void loop() {
-  if (isSDcardReady) { 
+void navigation( void * parameter ) {
+  char receivedChar;
+  for (;;) {
     // Read data from the GPS module
     while (gpsSerial.available() > 0) {
       // blinkMorseCode("e", GREEN_LED_PIN, 1,TEST); // Green LED for searching GPS data
-      char c = gpsSerial.read();
-      Serial.print(c); // Ausgabe der empfangenen Daten auf dem seriellen Monitor
+      receivedChar = gpsSerial.read();
+      Serial.print(receivedChar); // Ausgabe der empfangenen Daten auf dem seriellen Monitor
 
       // gps.encode(gpsSerial.read());
-      gps.encode(c);
+      gps.encode(receivedChar);
     }
-    // if ((TEST) && (gps.location.isUpdated())) {
-    //     Serial.print("Latitude: ");
-    //     Serial.print(gps.location.lat(), 6);
-    //     Serial.print(" Longitude: ");
-    //     Serial.print(gps.location.lng(), 6);
-    //     Serial.print(" HDOP: ");
-    //     Serial.println(gps.hdop.hdop());
-    // }
-    
-    
+
     if ((gps.location.isUpdated()) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
       if (TEST) {
+        Serial.println("");
         Serial.print("Latitude: ");
         Serial.print(gps.location.lat(), 6);
         Serial.print(" Longitude: ");
@@ -334,11 +215,94 @@ void loop() {
       strcpy(lonLast, lon);
       ledOFF(GREEN_LED_PIN,TEST); // position processed finished
     }
-  } else {
-      Serial.println("SD card not ready, System will reboot in 5 seconds");
-      blinkMorseCode("SOS", RED_LED_PIN, 1,TEST); // Rote LED blinkt 3 mal
-      mydelay(5000,1);
-      esp_restart();
+    vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 
+void communication( void * parameter ) {
+  for (;;) {
+    // Debug-Ausgabe
+    ledON(RED_LED_PIN,TEST); // Communication task running
+    Serial.println("Communication task running...");
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    ledOFF(RED_LED_PIN,TEST); // Communication task finished
+    vTaskDelay(100 / portTICK_PERIOD_MS);(100,1);
+  }
+}
+
+void setup() {
+
+  // Setzen Sie die Watchdog-Timeout-Zeit auf 10 Sekunden
+  esp_task_wdt_init(10, true);
+  
+    // Initialisiere die LED-Pins
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
+
+  ledON(RED_LED_PIN,TEST); // Rote LED starting setup
+
+  // Serial Monitor
+  Serial.begin(SERIALMONITOR_BAUD);
+  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2); // Serielle Schnittstelle für GNSS-Modul
+
+  Serial.println("GNSS serial connection started...");
+
+  // WiFi und Bluetooth ausschalten
+  WiFi.mode(WIFI_OFF);
+  btStop();
+  Serial.println("WiFi and Bluetooth turned off");
+
+  // Initialisiere die SD-Karte
+  if (!initializeSDCard()) {
+    isSDcardReady = false;
+    Serial.println("SD card initialization failed");
+  } else {
+    isSDcardReady = true;
+    Serial.println("SD card initialized");
+  }
+
+  // Initialize the MPU6050
+  setupMPU6050();
+  Serial.println("MPU6050 initialized");
+
+  if (isSDcardReady) {
+    listDir(SD, "/", 0);
+    ledOFF(RED_LED_PIN,TEST); // Rote LED finished setup
+  } else {
+    Serial.println("SD card not ready, System will reboot in 5 seconds");
+    blinkMorseCode("SOS", RED_LED_PIN, 1,TEST); // Rote LED blinkt 3 mal
+    vTaskDelay(2500 / portTICK_PERIOD_MS);
+    esp_restart();
+  }
+
+  TaskHandle_t taskNavigationHandle = NULL;
+  TaskHandle_t taskCommunicationHandle = NULL;
+
+  // Create the tasks
+  xTaskCreatePinnedToCore(
+    navigation, // Function to implement the task
+    "navigation", // Name of the task
+    20000, // Stack size in words
+    NULL, // Task input parameter
+    1, // Priority of the task
+    &taskNavigationHandle, // Task handle
+    1); // Core where the task should run
+
+  xTaskCreatePinnedToCore(
+    communication, // Function to implement the task
+    "communication", // Name of the task
+    20000, // Stack size in words
+    NULL, // Task input parameter
+    1, // Priority of the task
+    &taskCommunicationHandle, // Task handle
+    0); // Core where the task should run
+
+  // Start the scheduler
+  vTaskStartScheduler();
+}
+
+void loop() {
+  // Nichts zu tun
+}
