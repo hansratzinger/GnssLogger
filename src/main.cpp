@@ -1,45 +1,4 @@
-// ----------------------------------------------------------------------------------------------
-// GNSSLogger  
-// This project uses the ESP32 Dev Module board and a GNSS module to log GPS data to an SD card.
-// The GNSS module is connected to the ESP32 via UART.
-// // The ESP32 is put into deep sleep mode when the GNSS module is not in use.
-// // The ESP32 wakes up from deep sleep mode every 5 seconds to check the GNSS module for new data.
-// If the GNSS module has new data, the ESP32 processes the data and logs it to an SD card.
-// // The ESP32 switches between mission mode and station mode based on the distance between the current position and the last position.
-// // In station mode, the ESP32 logs the current position to the SD card and goes into deep sleep mode.
-// // In mission mode, the ESP32 checks if the current position is within a certain radius of the station positions.
-// // If the current position is within the radius, the ESP32 switches to station mode.
-// // If the current position is outside the radius, the ESP32 logs the current position to the SD card and goes into deep sleep mode.
-// // The ESP32 uses the RTC memory to store the last position, the last time, and the mode (mission or station).
-// -  the SD card to log the GPS data in CSV format.
-// -  the built-in LED pins to indicate the mode (mission or station) with red and green LEDs.
-// -  the Morse_LED library to blink the LEDs in Morse code.
-// -  the GNSS_module library to process the GPS data.
-// -  the SD_card library to interact with the SD card.
-// // -  the Sleep library to manage the sleep modes.
-// -  the TinyGPS++ library to parse the GPS data.
-// -  the WiFi library to turn off WiFi and Bluetooth.
-// -  the SPI library to communicate with the SD card.
-// -  the FS library to interact with the file system.
-// -  the Arduino.h library for general Arduino functions.
-// -  the HardwareSerial library to communicate with the GNSS module.
-// // -  the esp_sleep library to manage the sleep modes.
-// // -  the deque library to store the station positions.
-// -  the stdio.h library for standard input and output functions.
-// -  the string.h library for string manipulation functions.
-// -  the time.h library for time-related functions.
-// -  the Wire library to communicate with the MPU6050.
-// -  the MPU6050 library to read the accelerometer and gyroscope values.
-// -  the I2Cdev library to communicate with the MPU6050.
-// -  the Adafruit_MPU6050 library to read the accelerometer and gyroscope values.
-// -  the pins.h file to define the GPIO pins.
-// -  the my_Helpers.h file to define helper functions.
-// -  the freertos/FreeRTOS.h library to use FreeRTOS functions.
-// -  the freertos/task.h library to create tasks.
-// Hans Ratzinger 2025-02-10
-// Release 2.1.0
-// https://github.com/hansratzinger/GnssLogger
-// ----------------------------------------------------------------------------------------------
+// #include<ArduinoTrace.h>  
 #include <Wire.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -54,11 +13,24 @@
 #include "pins.h"
 #include <I2Cdev.h>
 #include <MPU6050.h>
+#include "esp_log.h"
 
+static const uint32_t WDT_TIMEOUT_MS = 30000;  // 30 Sekunden Timeout
+static const uint32_t TASK_DELAY_MS = 100;     // Task Delay
 
-// Define the RX and TX pins for Serial 2
+SemaphoreHandle_t watchdogMutex = NULL;
+SemaphoreHandle_t serialMutex = NULL;
+xTaskHandle navigationTask = NULL;
+xTaskHandle communicationTask = NULL;
+
+// Define the RX and TX pins for Serial 2 (GPS module)
+// // ESP32 WROOM32D
 #define RXD2 16
 #define TXD2 17
+// LILLYGO T-SIM7000G ESP32 WROVER
+// #define RXD2 3 // SIM
+// #define TXD2 1 // SIM
+
 #define GPS_BAUD 115200
 #define SERIALMONITOR_BAUD 115200
 
@@ -83,9 +55,7 @@ const bool TEST = true; // Definition der Konstante TEST
 
 unsigned long lastPositionTime = 0;
 unsigned long currentTime = 0;
-// const unsigned long timeToLastPositionTreshold = 30; // Zeitdifferenz-Schwellenwert in Sekunden
-const int mydelayTime = 250; // LED blink mydelay time
-// const int switchTime = 50; // Zeitdifferenz zwischen Positionen in msec
+
 const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;acc/x;acc/y;acc/z;gyro/x;gyro/y;gyro/z;temp/C\n";
 
 // The TinyGPS++ object
@@ -93,7 +63,6 @@ TinyGPSPlus gps;
 
 // Create an instance of the HardwareSerial class for Serial 2
 HardwareSerial gpsSerial(2); // Initialisierung von gpsSerial
-
 
 // Funktion zur Berechnung der Zeitdifferenz zwischen gpstime und gpstimeLast
 unsigned long getTimeDifference(const char *gpstime, const char *gpstimeLast) {
@@ -125,184 +94,324 @@ void writeToCSV(const String& data) {
   appendFile(SD, fileName.c_str(), logging);
 }
 
-void processPosition() {   
-  snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
-  snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
-
-  // Bestimme die Himmelsrichtung
-  // filepath: /c:/esp32/GnssLogger/src/main.cpp
-  char directionLatChar = getDirectionOfLat(gps.location.lat());
-  char directionLngChar = getDirectionOfLng(gps.location.lng());
-  snprintf(directionLat, sizeof(directionLat), "%c", directionLatChar);
-  snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
-
-  snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
-  snprintf(date, sizeof(date), "%04d-%02d-%02d", gps.date.year(), gps.date.month(), gps.date.day());
-  snprintf(hdop, sizeof(hdop), "%.1f", gps.hdop.hdop());
-  snprintf(satellites, sizeof(satellites), "%d", gps.satellites.value());
-  snprintf(speed, sizeof(speed), "%.1f", gps.speed.knots());
-  snprintf(altitude, sizeof(altitude), "%.1f", gps.altitude.meters());
-  snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s", date, gpstime, lat, directionLat, lon, directionLng, speed, altitude, hdop, satellites);
-
-  // Berechnung der Distanz zwischen der aktuellen und der letzten Position
-  distanceLast = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
-
-  latDifference = calculateDifference(atof(lat), atof(latLast));
-  lonDifference = calculateDifference(atof(lon), atof(lonLast));
-  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f;%.6f", latDifference, lonDifference);
-
-  positionDifference = calculateDistance(atof(lat), atof(lon), atof(latLast), atof(lonLast));
-  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.6f", positionDifference);
-  
-  // Read MPU6050 values and append to logging variable
-  readMPU6050();  // Read accelerometer values
-  snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), ";%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f", accelX, accelY, accelZ,gyroX, gyroY, gyroZ, temp);
-
-  // Ersetzen von '.' durch ',' in logging um Zahlen in die CSV-Datei zu schreiben
-  for (int i = 0; i < strlen(logging); i++) {
-    if (logging[i] == '.') {
-      logging[i] = ',';
+bool listDirectory(fs::FS &fs, const char * dirname, uint8_t levels) {
+    if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+        Serial.printf("Listing directory: %s\n", dirname);
+        xSemaphoreGive(serialMutex);
     }
-  }
 
-  strcat(logging, "\n"); // Füge einen Zeilenumbruch hinzu
+    File root = fs.open(dirname);
+    if(!root) {
+        return false;
+    }
+    if(!root.isDirectory()) {
+        return false;
+    }
 
-  // Debug-Ausgabe
-  Serial.print("new logging: ");
-  Serial.println(logging);
-
-  writeToCSV(logging);
-
-  // Leeren des logging-Arrays
-  memset(logging, 0, sizeof(logging)); 
+    File file = root.openNextFile();
+    while(file) {
+        if(file && xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+            if(file.isDirectory()) {
+                Serial.print("  DIR : ");
+                Serial.println(file.name());
+            } else {
+                Serial.print("  FILE: ");
+                Serial.print(file.name());
+                Serial.print("  SIZE: ");
+                Serial.println(file.size());
+            }
+            xSemaphoreGive(serialMutex);
+        }
+        file = root.openNextFile();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return true;
 }
 
+void processPosition() {
+    // Statische Puffer statt dynamischer Speicherzuweisung
+    static char lat[15];
+    static char lon[15];
+    static char directionLat[2];
+    static char directionLng[2];
+    static char gpstime[10];
+    static char date[11];
+    static char hdop[10];
+    static char satellites[10];
+    static char speed[10];
+    static char altitude[10];
+    static char logging[130];
 
-void navigation( void * parameter ) {
-  char receivedChar;
-  for (;;) {
-    // Read data from the GPS module
-    while (gpsSerial.available() > 0) {
-      // blinkMorseCode("e", GREEN_LED_PIN, 1,TEST); // Green LED for searching GPS data
-      receivedChar = gpsSerial.read();
-      Serial.print(receivedChar); // Ausgabe der empfangenen Daten auf dem seriellen Monitor
+    // GPS-Daten formatieren
+    snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
+    snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
 
-      // gps.encode(gpsSerial.read());
-      gps.encode(receivedChar);
+    // Himmelsrichtung bestimmen
+    char directionLatChar = getDirectionOfLat(gps.location.lat());
+    char directionLngChar = getDirectionOfLng(gps.location.lng());
+    snprintf(directionLat, sizeof(directionLat), "%c", directionLatChar);
+    snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
+
+    // Zeit und Datum
+    snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", 
+        gps.time.hour(), gps.time.minute(), gps.time.second());
+    snprintf(date, sizeof(date), "%04d-%02d-%02d", 
+        gps.date.year(), gps.date.month(), gps.date.day());
+
+    // GPS-Daten
+    snprintf(hdop, sizeof(hdop), "%.1f", gps.hdop.hdop());
+    snprintf(satellites, sizeof(satellites), "%d", gps.satellites.value());
+    snprintf(speed, sizeof(speed), "%.1f", gps.speed.knots());
+    snprintf(altitude, sizeof(altitude), "%.1f", gps.altitude.meters());
+
+    // Logging-String zusammenbauen
+    snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s", 
+        date, gpstime, lat, directionLat, lon, directionLng, 
+        speed, altitude, hdop, satellites);
+
+    // Distanzberechnungen
+    double currentLat = atof(lat);
+    double currentLon = atof(lon);
+    double lastLat = atof(latLast);
+    double lastLon = atof(lonLast);
+
+    latDifference = calculateDifference(currentLat, lastLat);
+    lonDifference = calculateDifference(currentLon, lastLon);
+    positionDifference = calculateDistance(currentLat, currentLon, lastLat, lastLon);
+
+    // Differenzen anhängen
+    snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), 
+        ";%.6f;%.6f;%.6f", latDifference, lonDifference, positionDifference);
+
+    // MPU6050-Daten anhängen
+    snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), 
+        ";%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f", 
+        accelX, accelY, accelZ, gyroX, gyroY, gyroZ, temp);
+
+    // Dezimalpunkte durch Kommas ersetzen
+    for (size_t i = 0; i < strlen(logging); i++) {
+        if (logging[i] == '.') {
+            logging[i] = ',';
+        }
     }
 
-    if ((gps.location.isUpdated()) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0  && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0 ) {
-      if (TEST) {
-        Serial.println("");
-        Serial.print("Latitude: ");
-        Serial.print(gps.location.lat(), 6);
-        Serial.print(" Longitude: ");
-        Serial.print(gps.location.lng(), 6);
-        Serial.print(" HDOP: ");
-        Serial.println(gps.hdop.hdop());
-      }
-      // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
-      ledON(GREEN_LED_PIN,TEST); // position processing
-      // Read MPU6050 values and append to logging variable
-      processPosition();
-             
-      // Save the last values
-      strcpy(gpstimeLast, gpstime);
-      strcpy(dateLast, date);
-      strcpy(latLast, lat);
-      strcpy(lonLast, lon);
-      ledOFF(GREEN_LED_PIN,TEST); // position processed finished
-    }
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-  }
-}
+    strcat(logging, "\n");
 
-void communication( void * parameter ) {
-  for (;;) {
     // Debug-Ausgabe
-    ledON(RED_LED_PIN,TEST); // Communication task running
-    Serial.println("Communication task running...");
-    vTaskDelay(200 / portTICK_PERIOD_MS);
-    ledOFF(RED_LED_PIN,TEST); // Communication task finished
-    vTaskDelay(100 / portTICK_PERIOD_MS);(100,1);
-  }
+    if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+        Serial.print("new logging: ");
+        Serial.println(logging);
+        xSemaphoreGive(serialMutex);
+    }
+
+    writeToCSV(logging);
+}
+
+void navigation(void * parameter) {
+    // Watchdog Setup
+    if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
+        if(esp_task_wdt_add(NULL) != ESP_OK) {
+            Serial.println("Navigation: WDT Add failed");
+        }
+        xSemaphoreGive(watchdogMutex);
+    }
+    
+    // GPS Setup
+    gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2);
+    if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+        Serial.println("Navigation started");
+        xSemaphoreGive(serialMutex);
+    }
+    
+    for(;;) {
+        // Wenn keine GPS-Daten verfügbar sind, kurzes Delay und Watchdog Reset
+        if (!gpsSerial.available()) {
+            if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
+                esp_task_wdt_reset();
+                xSemaphoreGive(watchdogMutex);
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));  // Kürzeres Delay statt portMAX_DELAY
+            continue;
+        }
+
+        // GPS-Daten verarbeiten wenn verfügbar
+        while (gpsSerial.available() > 0) {
+            if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+                Serial.print("."); // waiting for GPS data
+                xSemaphoreGive(serialMutex);
+            }
+            gps.encode(gpsSerial.read());
+            
+            // Watchdog während der Datenverarbeitung zurücksetzen
+            if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
+                esp_task_wdt_reset();
+                xSemaphoreGive(watchdogMutex);
+            }
+        }
+        
+        if (gps.location.isUpdated()) {
+            digitalWrite(GREEN_LED_PIN, HIGH);
+            if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+                Serial.println("GPS data received");
+                xSemaphoreGive(serialMutex);
+            }
+            processPosition();  // Verarbeite die GPS-Daten
+            digitalWrite(GREEN_LED_PIN, LOW);
+        }
+        
+        // Watchdog zurücksetzen mit Mutex
+        if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
+            esp_task_wdt_reset();
+            xSemaphoreGive(watchdogMutex);
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+void communication(void * parameter) {
+    // Task Setup - nur Task zum Watchdog hinzufügen
+    if(esp_task_wdt_add(NULL) != ESP_OK) {
+        if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+            Serial.println("Communication: WDT Add failed");
+            xSemaphoreGive(serialMutex);
+        }
+    }
+    
+    // Debug-Ausgabe mit Mutex
+    if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+        Serial.println("Communication task started");
+        xSemaphoreGive(serialMutex);
+    }
+    
+    for(;;) {
+        // LED Blinken
+        digitalWrite(RED_LED_PIN, HIGH);
+        
+        // Debug-Ausgabe mit Mutex
+        if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+            Serial.println("Communication running");
+            xSemaphoreGive(serialMutex);
+        }
+        
+        digitalWrite(RED_LED_PIN, LOW);
+        
+        // Watchdog zurücksetzen
+        esp_task_wdt_reset();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
 
 void setup() {
 
-  // Setzen Sie die Watchdog-Timeout-Zeit auf 10 Sekunden
-  esp_task_wdt_init(10, true);
-  
-    // Initialisiere die LED-Pins
-  pinMode(RED_LED_PIN, OUTPUT);
-  pinMode(GREEN_LED_PIN, OUTPUT);
-  digitalWrite(RED_LED_PIN, LOW);
-  digitalWrite(GREEN_LED_PIN, LOW);
+    printf("Branch: %s\n", BRANCH.c_str());
+    printf("Release: %s\n", RELEASE.c_str());
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    // Basis-Initialisierung
+    Serial.begin(SERIALMONITOR_BAUD);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    Serial.println("Starting setup...");
 
-  ledON(RED_LED_PIN,TEST); // Rote LED starting setup
+    // LED-Pins initialisieren
+    pinMode(RED_LED_PIN, OUTPUT);
+    pinMode(GREEN_LED_PIN, OUTPUT);
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(GREEN_LED_PIN, LOW);
 
-  // Serial Monitor
-  Serial.begin(SERIALMONITOR_BAUD);
-  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2); // Serielle Schnittstelle für GNSS-Modul
+    // WiFi und Bluetooth ausschalten
+    WiFi.mode(WIFI_OFF);
+    btStop();
+    Serial.println("WiFi and Bluetooth turned off");
 
-  Serial.println("GNSS serial connection started...");
+    setupMPU6050(); // MPU6050 initialisieren
 
-  // WiFi und Bluetooth ausschalten
-  WiFi.mode(WIFI_OFF);
-  btStop();
-  Serial.println("WiFi and Bluetooth turned off");
-
-  if (!initializeSDCard()) {  // Initialisiere die SD-Karte und überprüfe, ob sie bereit ist    
-    Serial.println("SD card initialization failed");
-    Serial.println("SD card not ready, System will reboot in 5 seconds");
-    blinkMorseCode("SOS", RED_LED_PIN, 1,TEST); // Rote LED blinkt 3 mal
-    vTaskDelay(2500 / portTICK_PERIOD_MS);
-    esp_restart();
-  } else {  
-    listDir(SD, "/", 0);
-    ledOFF(RED_LED_PIN,TEST); // Rote LED finished setup
-    Serial.println("SD card initialized");
-    // Überprüfen Sie, ob die Datei debug.txt vorhanden ist
-    if (!SD.exists("/debug.txt")) {
-      // Datei existiert nicht, erstelle die Datei
-      File file = SD.open("/debug.txt", FILE_WRITE);
-      if (file) {
-        file.println("Debug file created"); 
-        file.close();
-      } else {
-        Serial.println("Failed to create debug file");
-      } 
+    // Mutexe erstellen
+    watchdogMutex = xSemaphoreCreateMutex();
+    serialMutex = xSemaphoreCreateMutex();
+    
+    if (watchdogMutex == NULL || serialMutex == NULL) {
+        Serial.println("Error creating mutexes");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP.restart();
     }
-  }
-  
-  // // Initialize the MPU6050
-  // setupMPU6050();
-  // Serial.println("MPU6050 initialized");
-  
-  TaskHandle_t taskNavigationHandle = NULL;
-  TaskHandle_t taskCommunicationHandle = NULL;
 
-  // Create the tasks
-  xTaskCreatePinnedToCore(
-    navigation, // Function to implement the task
-    "navigation", // Name of the task
-    20000, // Stack size in words
-    NULL, // Task input parameter
-    1, // Priority of the task
-    &taskNavigationHandle, // Task handle
-    1); // Core where the task should run
+    // SD-Karte initialisieren mit Wiederholungsversuchen
+    int retries = 3;
+    bool sdInitialized = false;
 
-  xTaskCreatePinnedToCore(
-    communication, // Function to implement the task
-    "communication", // Name of the task
-    20000, // Stack size in words
-    NULL, // Task input parameter
-    1, // Priority of the task
-    &taskCommunicationHandle, // Task handle
-    0); // Core where the task should run
+    while (retries > 0 && !sdInitialized) {
+        if (SD.begin()) {
+            uint8_t cardType = SD.cardType();
+            if (cardType != CARD_NONE) {
+                Serial.println("Card Mount Success");
+                Serial.printf("SD Card Type: %d\n", cardType);
+                Serial.println("SD card initialized");
+                sdInitialized = true;
+                
+                // Verzeichnislisting durchführen
+                if (!listDirectory(SD, "/", 0)) {
+                    Serial.println("Directory listing failed");
+                    sdInitialized = false;
+                }
+            }
+        }
+        
+        if (!sdInitialized) {
+            retries--;
+            if (retries > 0) {
+                Serial.printf("SD card initialization failed, retrying... (%d attempts left)\n", retries);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+        }
+    }
 
-  // Start the scheduler
-  vTaskStartScheduler();
+    if (!sdInitialized) {
+        Serial.println("SD card initialization failed permanently");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP.restart();
+    }
+
+    // Tasks erstellen
+    Serial.println("Creating tasks...");
+    
+    // Navigation Task erstellen
+    BaseType_t xReturned = xTaskCreatePinnedToCore(
+        navigation,
+        "navigation",
+        4096,
+        NULL,
+        1,
+        &navigationTask,
+        1
+    );
+
+    if (xReturned != pdPASS) {
+        Serial.println("Navigation task creation failed");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP.restart();
+    }
+    Serial.println("Navigation task created");
+
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    // Communication Task erstellen
+    xReturned = xTaskCreatePinnedToCore(
+        communication,
+        "communication",
+        4096,
+        NULL,
+        1,
+        (TaskHandle_t*)&communicationTask,
+        0
+    );
+
+    if (xReturned != pdPASS) {
+        Serial.println("Communication task creation failed");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP.restart();
+    }
+    Serial.println("Communication task created");
+    Serial.println("Setup complete");
 }
 
 void loop() {
