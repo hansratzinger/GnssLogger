@@ -1,0 +1,8 @@
+1. SIM7000G getting to work with LC76G GNSS Module and MPU6050
+2. Build RPM unit by connecting IR-sensor to HELTEC LoRa module
+3. Test RPM displayed on OLED display
+5. Setup of both HELTEC with LoRa and connect them
+6. Connection between SIM7000G and HELTEC with Bluethooth or BLE
+7. SIM7000G setting up SIMcard and connect to Internet
+8. MySQL database
+9. Cases for main unit and RPM unit

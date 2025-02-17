@@ -15,6 +15,20 @@
 #include <MPU6050.h>
 #include "esp_log.h"
 
+// LilyGO T-SIM7000G Pins
+#define SD_MISO     2
+#define SD_MOSI    15
+#define SD_SCLK    14
+#define SD_CS      13
+#define LED_PIN    12
+#define DTR_PIN     4
+#define MODEM_RX   26
+#define MODEM_TX   27
+#define MODEM_PW   25
+#define GPS_RX     17  // LC76G TX
+#define GPS_TX     16  // LC76G RX
+#define GPS_BAUD 115200
+#define SERIALMONITOR_BAUD 115200
 static const uint32_t WDT_TIMEOUT_MS = 30000;  // 30 Sekunden Timeout
 static const uint32_t TASK_DELAY_MS = 100;     // Task Delay
 
@@ -23,20 +37,9 @@ SemaphoreHandle_t serialMutex = NULL;
 xTaskHandle navigationTask = NULL;
 xTaskHandle communicationTask = NULL;
 
-// Define the RX and TX pins for Serial 2 (GPS module)
-// // ESP32 WROOM32D
-#define RXD2 16
-#define TXD2 17
-// LILLYGO T-SIM7000G ESP32 WROVER
-// #define RXD2 3 // SIM
-// #define TXD2 1 // SIM
-
-#define GPS_BAUD 115200
-#define SERIALMONITOR_BAUD 115200
-
 // Define the GPIO pins for the LEDs
-const int RED_LED_PIN = 25; // station mode
-const int GREEN_LED_PIN = 26; // mission mode
+const int RED_LED_PIN = 12; // LILLYGO T-SIM7000G -> ESP32 WROVER
+// const int GREEN_LED_PIN = 26; // mission mode
 
 const String BRANCH="release-2.1-GSM-FreeRTOS"; // Branch name
 const String RELEASE="2.1.0"; // Branch name
@@ -62,7 +65,7 @@ const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;L
 TinyGPSPlus gps;
 
 // Create an instance of the HardwareSerial class for Serial 2
-HardwareSerial gpsSerial(2); // Initialisierung von gpsSerial
+HardwareSerial gpsSerial(1); // Initialisierung von gpsSerial
 
 // Funktion zur Berechnung der Zeitdifferenz zwischen gpstime und gpstimeLast
 unsigned long getTimeDifference(const char *gpstime, const char *gpstimeLast) {
@@ -217,7 +220,7 @@ void navigation(void * parameter) {
     }
     
     // GPS Setup
-    gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD2, TXD2);
+    gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
     if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
         Serial.println("Navigation started");
         xSemaphoreGive(serialMutex);
@@ -250,13 +253,13 @@ void navigation(void * parameter) {
         }
         
         if (gps.location.isUpdated()) {
-            digitalWrite(GREEN_LED_PIN, HIGH);
+            digitalWrite(RED_LED_PIN, HIGH);
             if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
                 Serial.println("GPS data received");
                 xSemaphoreGive(serialMutex);
             }
             processPosition();  // Verarbeite die GPS-Daten
-            digitalWrite(GREEN_LED_PIN, LOW);
+            digitalWrite(RED_LED_PIN, LOW);
         }
         
         // Watchdog zurücksetzen mit Mutex
@@ -304,26 +307,30 @@ void communication(void * parameter) {
 
 void setup() {
 
+    // SPI für SD-Karte initialisieren
+    SPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
+    
     printf("Branch: %s\n", BRANCH.c_str());
     printf("Release: %s\n", RELEASE.c_str());
     vTaskDelay(1000 / portTICK_PERIOD_MS);
+
     // Basis-Initialisierung
     Serial.begin(SERIALMONITOR_BAUD);
     vTaskDelay(pdMS_TO_TICKS(1000));
     Serial.println("Starting setup...");
 
-    // LED-Pins initialisieren
-    pinMode(RED_LED_PIN, OUTPUT);
-    pinMode(GREEN_LED_PIN, OUTPUT);
-    digitalWrite(RED_LED_PIN, LOW);
-    digitalWrite(GREEN_LED_PIN, LOW);
+    // // LED-Pins initialisieren
+    // pinMode(RED_LED_PIN, OUTPUT);
+    // // pinMode(GREEN_LED_PIN, OUTPUT);
+    // digitalWrite(RED_LED_PIN, LOW);
+    // // digitalWrite(GREEN_LED_PIN, LOW);
 
     // WiFi und Bluetooth ausschalten
     WiFi.mode(WIFI_OFF);
     btStop();
     Serial.println("WiFi and Bluetooth turned off");
 
-    setupMPU6050(); // MPU6050 initialisieren
+    // setupMPU6050(); // MPU6050 initialisieren
 
     // Mutexe erstellen
     watchdogMutex = xSemaphoreCreateMutex();
@@ -340,9 +347,10 @@ void setup() {
     bool sdInitialized = false;
 
     while (retries > 0 && !sdInitialized) {
-        if (SD.begin()) {
+        if (SD.begin(SD_CS, SPI)) {  // SPI explizit übergeben
             uint8_t cardType = SD.cardType();
             if (cardType != CARD_NONE) {
+                sdInitialized = true;
                 Serial.println("Card Mount Success");
                 Serial.printf("SD Card Type: %d\n", cardType);
                 Serial.println("SD card initialized");
@@ -371,6 +379,11 @@ void setup() {
         ESP.restart();
     }
 
+    // Hardware-Serial für GPS initialisieren
+    gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
+    Serial.println("GPS Serial initialized");
+
+
     // Tasks erstellen
     Serial.println("Creating tasks...");
     
@@ -378,9 +391,9 @@ void setup() {
     BaseType_t xReturned = xTaskCreatePinnedToCore(
         navigation,
         "navigation",
-        4096,
+        8192,
         NULL,
-        1,
+        2,
         &navigationTask,
         1
     );
@@ -398,7 +411,7 @@ void setup() {
     xReturned = xTaskCreatePinnedToCore(
         communication,
         "communication",
-        4096,
+        8192,
         NULL,
         1,
         (TaskHandle_t*)&communicationTask,
