@@ -9,7 +9,7 @@ extern const bool TEST; // Deklaration der Konstante TEST
 void createDir(fs::FS &fs, const char *path);
 void removeDir(fs::FS &fs, const char *path);
 void readFile(fs::FS &fs, const char *path);
-
+bool writeDebugFile(fs::FS &fs, const char * message);
 void renameFile(fs::FS &fs, const char *path1, const char *path2);
 void deleteFile(fs::FS &fs, const char *path);
 void testFileIO(fs::FS &fs, const char *path);

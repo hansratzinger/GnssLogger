@@ -279,44 +279,81 @@ void navigation(void * parameter) {
         Serial.println("Navigation started");
         xSemaphoreGive(serialMutex);
     }
+
+    char debugBuffer[512] = {0};
+    char testBuffer[64] = {0};
+    unsigned long lastDebugWrite = 0;
+    unsigned long lastTestWrite = 0;
+    int testCounter = 0;
     
     for(;;) {
-        // Wenn keine GPS-Daten verfügbar sind, kurzes Delay und Watchdog Reset
-        if (!gpsSerial.available()) {
-            if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
-                esp_task_wdt_reset();
-                xSemaphoreGive(watchdogMutex);
-            }
-            vTaskDelay(pdMS_TO_TICKS(100));  // Kürzeres Delay statt portMAX_DELAY
-            continue;
-        }
-
-        // GPS-Daten verarbeiten wenn verfügbar
+        String rawData = "";
+        
+        // Sammle alle verfügbaren GPS-Daten
         while (gpsSerial.available() > 0) {
+            char c = gpsSerial.read();
+            rawData += c;
+            gps.encode(c);
+            
+            // Sofortige Ausgabe der GNSS-Daten
             if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-                Serial.print("."); // waiting for GPS data
+                Serial.print(c);  // Zeichen für Zeichen ausgeben
                 xSemaphoreGive(serialMutex);
             }
-            gps.encode(gpsSerial.read());
-            
-            // Watchdog während der Datenverarbeitung zurücksetzen
-            if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
-                esp_task_wdt_reset();
-                xSemaphoreGive(watchdogMutex);
+        }
+
+        // Test-Nachricht jede Sekunde
+        if ((millis() - lastTestWrite) > 1000) {
+            snprintf(testBuffer, sizeof(testBuffer), 
+                "[%lu ms] Test message #%d\n", 
+                millis(), 
+                testCounter++);
+
+            // Auf SD-Karte schreiben
+            if(writeDebugFile(SD, testBuffer)) {
+                if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+                    Serial.print("Test data written: ");
+                    Serial.print(testBuffer);
+                    xSemaphoreGive(serialMutex);
+                }
+            } else {
+                if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+                    Serial.println("Failed to write test data!");
+                    xSemaphoreGive(serialMutex);
+                }
+            }
+            lastTestWrite = millis();
+        }
+
+        // Schreibe Debug-Daten alle 5 Sekunden
+        if (rawData.length() > 0 && (millis() - lastDebugWrite) > 5000) {
+            // Timestamp hinzufügen
+            snprintf(debugBuffer, sizeof(debugBuffer), 
+                "[%lu ms] %s\n", 
+                millis(), 
+                rawData.c_str());
+
+            if(writeDebugFile(SD, debugBuffer)) {
+                if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+                    Serial.println("GNSS debug data written");
+                    xSemaphoreGive(serialMutex);
+                }
+                lastDebugWrite = millis();
             }
         }
-        
+
+        // Normale GPS-Verarbeitung fortsetzen
         if (gps.location.isUpdated()) {
             digitalWrite(RED_LED_PIN, HIGH);
             if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-                Serial.println("GPS data received");
+                Serial.println("GPS position updated");
                 xSemaphoreGive(serialMutex);
             }
-            processPosition();  // Verarbeite die GPS-Daten
+            processPosition();
             digitalWrite(RED_LED_PIN, LOW);
         }
-        
-        // Watchdog zurücksetzen mit Mutex
+
+        // Watchdog zurücksetzen
         if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
             esp_task_wdt_reset();
             xSemaphoreGive(watchdogMutex);
@@ -324,10 +361,7 @@ void navigation(void * parameter) {
         
         vTaskDelay(pdMS_TO_TICKS(100));
     }
-
-
-
-
+}
     
     // for(;;) {
     //     // GPS-Daten simulieren
@@ -351,7 +385,7 @@ void navigation(void * parameter) {
         
     //     vTaskDelay(pdMS_TO_TICKS(1000)); // Längeres Delay für die Simulation
     // }
-}
+
 
 void communication(void * parameter) {
     // Task Setup - nur Task zum Watchdog hinzufügen

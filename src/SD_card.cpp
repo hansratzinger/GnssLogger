@@ -318,6 +318,30 @@ bool initializeSDCard() {
   }
 }
 
+bool writeDebugFile(fs::FS &fs, const char * message) {
+    const char* path = "/debug.txt";
+    
+    if(!fs.exists(path)) {
+        File file = fs.open(path, FILE_WRITE);
+        if(!file) {
+            Serial.println("Failed to create debug file");
+            return false;
+        }
+        file.close();
+    }
+
+    File file = fs.open(path, FILE_APPEND);
+    if(!file) {
+        Serial.println("Failed to open debug file");
+        return false;
+    }
+
+    size_t bytesWritten = file.print(message);
+    file.close();
+
+    return bytesWritten > 0;
+}
+
 void checkFile(fs::FS &fs, const char * path) {
     File file = fs.open(path);
     if(!file) {
