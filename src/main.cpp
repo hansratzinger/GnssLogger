@@ -1,3 +1,8 @@
+#include <Arduino.h>
+#include <pins.h>
+#define GPS_BAUD 115200
+#define SERIALMONITOR_BAUD 115200
+
 // #include<ArduinoTrace.h>  
 #include <Wire.h>
 #include <freertos/FreeRTOS.h>
@@ -9,26 +14,12 @@
 #include <my_Helpers.h>
 #include <SD.h>
 #include <SPI.h>
-#include <Arduino.h>
-#include "pins.h"
 #include <I2Cdev.h>
 #include <MPU6050.h>
 #include "esp_log.h"
+#include <FS.h>
 
-// LilyGO T-SIM7000G Pins
-#define SD_MISO     2
-#define SD_MOSI    15
-#define SD_SCLK    14
-#define SD_CS      13
-#define LED_PIN    12
-#define DTR_PIN     4
-#define MODEM_RX   26
-#define MODEM_TX   27
-#define MODEM_PW   25
-#define GPS_RX     17  // LC76G TX
-#define GPS_TX     16  // LC76G RX
-#define GPS_BAUD 115200
-#define SERIALMONITOR_BAUD 115200
+
 static const uint32_t WDT_TIMEOUT_MS = 30000;  // 30 Sekunden Timeout
 static const uint32_t TASK_DELAY_MS = 100;     // Task Delay
 
@@ -36,10 +27,6 @@ SemaphoreHandle_t watchdogMutex = NULL;
 SemaphoreHandle_t serialMutex = NULL;
 xTaskHandle navigationTask = NULL;
 xTaskHandle communicationTask = NULL;
-
-// Define the GPIO pins for the LEDs
-const int RED_LED_PIN = 12; // LILLYGO T-SIM7000G -> ESP32 WROVER
-// const int GREEN_LED_PIN = 26; // mission mode
 
 const String BRANCH="release-2.1-GSM-FreeRTOS"; // Branch name
 const String RELEASE="2.1.0"; // Branch name
@@ -54,8 +41,7 @@ char logging[130] = "";
 char gpsData[130] = "";
 double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
 
-const bool TEST = true; // Definition der Konstante TEST
-
+const bool TEST = true; // Definition der Konstante TEST  
 unsigned long lastPositionTime = 0;
 unsigned long currentTime = 0;
 
@@ -66,6 +52,54 @@ TinyGPSPlus gps;
 
 // Create an instance of the HardwareSerial class for Serial 2
 HardwareSerial gpsSerial(1); // Initialisierung von gpsSerial
+
+// Nach den globalen Variablen hinzufügen:
+
+// Simulierte GPS-Daten
+void simulateGPS(TinyGPSPlus& gps) {
+    static uint32_t timestamp = 0;
+    static double lat = 48.484272;  // Startposition
+    static double lon = 16.471992;
+    static double alt = 145.3;
+    static float speed = 0.8;
+    static int satellites = 10;
+    static float hdop = 1.2;
+    
+    // Zeitstempel aktualisieren
+    timestamp += 1000; // 1 Sekunde weiterzählen
+    
+    // Position leicht ändern
+    lat += 0.000010;  // ca. 1m nach Norden
+    lon += 0.000015;  // ca. 1m nach Osten
+    
+    // TinyGPS+ Daten mittels encode() updaten
+    char nmea[100];
+    int year = 2024;
+    int month = 2;
+    int day = 17;
+    int hour = 14;
+    int minute = 30;
+    int second = timestamp / 1000 % 60;
+
+    // GPRMC Satz generieren
+    snprintf(nmea, sizeof(nmea), 
+        "$GPRMC,%02d%02d%02d.000,A,%02.6f,N,%03.6f,E,%.1f,%.1f,170224,,*",
+        hour, minute, second, lat, lon, speed, hdop);
+    
+    // Checksumme berechnen und anhängen
+    byte checksum = 0;
+    for(int i = 1; i < strlen(nmea) - 1; i++) {
+        checksum ^= nmea[i];
+    }
+    char final_nmea[100];
+    snprintf(final_nmea, sizeof(final_nmea), "%s%02X\r\n", nmea, checksum);
+    
+    // NMEA Satz an TinyGPS+ übergeben
+    for(int i = 0; i < strlen(final_nmea); i++) {
+        gps.encode(final_nmea[i]);
+    }
+}
+
 
 // Funktion zur Berechnung der Zeitdifferenz zwischen gpstime und gpstimeLast
 unsigned long getTimeDifference(const char *gpstime, const char *gpstimeLast) {
@@ -85,49 +119,53 @@ unsigned long getTimeDifference(const char *gpstime, const char *gpstimeLast) {
   }
 }
 
-void writeToCSV(const String& data) {
-  // Generiere den Dateinamen basierend auf dem aktuellen Datum
-  String fileName = generateFileName(gps);
-  // Überprüfe, ob die Datei bereits existiert
-  if (!SD.exists(fileName.c_str())) {
-    // Datei existiert nicht, erstelle die Datei und schreibe die erste Zeile
-    writeFile(SD, fileName.c_str(), firstline);
-  }
-  // Schreibe die Daten in die Datei
-  appendFile(SD, fileName.c_str(), logging);
-}
-
-bool listDirectory(fs::FS &fs, const char * dirname, uint8_t levels) {
+bool writeToCSV(const String& data) {
     if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-        Serial.printf("Listing directory: %s\n", dirname);
+        Serial.println("Attempting to write to CSV...");
+        Serial.println("Data to write: " + data);
         xSemaphoreGive(serialMutex);
     }
 
-    File root = fs.open(dirname);
-    if(!root) {
-        return false;
+    // Generiere den Dateinamen
+    String fileName = generateFileName(gps);
+    bool isNewFile = !SD.exists(fileName.c_str());
+    
+    if(isNewFile) {
+        if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+            Serial.println("Creating new file with header");
+            xSemaphoreGive(serialMutex);
+        }
+        
+        // Neue Datei mit Header erstellen
+        if(!writeFile(SD, fileName.c_str(), firstline)) {
+            if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+                Serial.println("Failed to write header!");
+                xSemaphoreGive(serialMutex);
+            }
+            return false;
+        }
     }
-    if(!root.isDirectory()) {
+
+    // Daten anhängen
+    String dataWithNewline = data + "\n";  // Zeilenumbruch hinzufügen
+    if(!appendFile(SD, fileName.c_str(), dataWithNewline.c_str())) {
+        if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+            Serial.println("Failed to append data!");
+            xSemaphoreGive(serialMutex);
+        }
         return false;
     }
 
-    File file = root.openNextFile();
-    while(file) {
-        if(file && xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-            if(file.isDirectory()) {
-                Serial.print("  DIR : ");
-                Serial.println(file.name());
-            } else {
-                Serial.print("  FILE: ");
-                Serial.print(file.name());
-                Serial.print("  SIZE: ");
-                Serial.println(file.size());
-            }
+    // Datei zur Überprüfung öffnen und Größe ausgeben
+    File file = SD.open(fileName.c_str());
+    if(file) {
+        if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+            Serial.printf("File size after write: %lu bytes\n", file.size());
             xSemaphoreGive(serialMutex);
         }
-        file = root.openNextFile();
-        vTaskDelay(pdMS_TO_TICKS(10));
+        file.close();
     }
+
     return true;
 }
 
@@ -145,6 +183,11 @@ void processPosition() {
     static char altitude[10];
     static char logging[130];
 
+    if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+      Serial.println("Processing position data...");
+      xSemaphoreGive(serialMutex);
+    }
+    
     // GPS-Daten formatieren
     snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
     snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
@@ -198,16 +241,25 @@ void processPosition() {
         }
     }
 
-    strcat(logging, "\n");
-
-    // Debug-Ausgabe
+    // Nach dem Zusammenbau des logging-Strings
     if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-        Serial.print("new logging: ");
-        Serial.println(logging);
+        Serial.println("Logging string built: " + String(logging));
         xSemaphoreGive(serialMutex);
     }
 
-    writeToCSV(logging);
+    if(strlen(logging) > 0) {
+        if(!writeToCSV(String(logging))) {
+            if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+                Serial.println("Failed to write to CSV file!");
+                xSemaphoreGive(serialMutex);
+            }
+        }
+    } else {
+        if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+            Serial.println("Error: Empty logging string!");
+            xSemaphoreGive(serialMutex);
+        }
+    }
 }
 
 void navigation(void * parameter) {
@@ -226,36 +278,63 @@ void navigation(void * parameter) {
         xSemaphoreGive(serialMutex);
     }
     
-    for(;;) {
-        // Wenn keine GPS-Daten verfügbar sind, kurzes Delay und Watchdog Reset
-        if (!gpsSerial.available()) {
-            if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
-                esp_task_wdt_reset();
-                xSemaphoreGive(watchdogMutex);
-            }
-            vTaskDelay(pdMS_TO_TICKS(100));  // Kürzeres Delay statt portMAX_DELAY
-            continue;
-        }
+    // for(;;) {
+    //     // Wenn keine GPS-Daten verfügbar sind, kurzes Delay und Watchdog Reset
+    //     if (!gpsSerial.available()) {
+    //         if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
+    //             esp_task_wdt_reset();
+    //             xSemaphoreGive(watchdogMutex);
+    //         }
+    //         vTaskDelay(pdMS_TO_TICKS(100));  // Kürzeres Delay statt portMAX_DELAY
+    //         continue;
+    //     }
 
-        // GPS-Daten verarbeiten wenn verfügbar
-        while (gpsSerial.available() > 0) {
-            if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-                Serial.print("."); // waiting for GPS data
-                xSemaphoreGive(serialMutex);
-            }
-            gps.encode(gpsSerial.read());
+    //     // GPS-Daten verarbeiten wenn verfügbar
+    //     while (gpsSerial.available() > 0) {
+    //         if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+    //             Serial.print("."); // waiting for GPS data
+    //             xSemaphoreGive(serialMutex);
+    //         }
+    //         gps.encode(gpsSerial.read());
             
-            // Watchdog während der Datenverarbeitung zurücksetzen
-            if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
-                esp_task_wdt_reset();
-                xSemaphoreGive(watchdogMutex);
-            }
-        }
+    //         // Watchdog während der Datenverarbeitung zurücksetzen
+    //         if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
+    //             esp_task_wdt_reset();
+    //             xSemaphoreGive(watchdogMutex);
+    //         }
+    //     }
+        
+    //     if (gps.location.isUpdated()) {
+    //         digitalWrite(RED_LED_PIN, HIGH);
+    //         if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+    //             Serial.println("GPS data received");
+    //             xSemaphoreGive(serialMutex);
+    //         }
+    //         processPosition();  // Verarbeite die GPS-Daten
+    //         digitalWrite(RED_LED_PIN, LOW);
+    //     }
+        
+    //     // Watchdog zurücksetzen mit Mutex
+    //     if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
+    //         esp_task_wdt_reset();
+    //         xSemaphoreGive(watchdogMutex);
+    //     }
+        
+    //     vTaskDelay(pdMS_TO_TICKS(100));
+    // }
+
+// In der navigation()-Funktion den GPS-Teil wie folgt ändern:
+
+
+    
+    for(;;) {
+        // GPS-Daten simulieren
+        simulateGPS(gps);
         
         if (gps.location.isUpdated()) {
             digitalWrite(RED_LED_PIN, HIGH);
             if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-                Serial.println("GPS data received");
+                Serial.println("Simulated GPS data received");
                 xSemaphoreGive(serialMutex);
             }
             processPosition();  // Verarbeite die GPS-Daten
@@ -268,7 +347,7 @@ void navigation(void * parameter) {
             xSemaphoreGive(watchdogMutex);
         }
         
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Längeres Delay für die Simulation
     }
 }
 

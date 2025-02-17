@@ -102,11 +102,11 @@ void ledMode(bool mode, bool TEST) {
     return;
   } 
   if (mode) {
-    ledON(GREEN_LED_PIN, TEST);
+    // ledON(GREEN_LED_PIN, TEST);
     ledOFF(RED_LED_PIN, TEST);
   } else {
     ledON(RED_LED_PIN, TEST);
-    ledOFF(GREEN_LED_PIN, TEST);
+    // ledOFF(GREEN_LED_PIN, TEST);
   }
 }
 

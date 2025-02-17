@@ -5,15 +5,15 @@
 #include <deque>
 
 extern const bool TEST; // in main.cpp definiert für Testzwecke
-extern const int RED_LED_PIN;
-extern const int GREEN_LED_PIN;
+// extern const int RED_LED_PIN;
+// extern const int GREEN_LED_PIN;
 extern RTC_DATA_ATTR std::deque<std::pair<double, double>> stationPositionsRTC;
 
 
 // Funktion zur Aktivierung des Light-Sleep-Modus
 void enableLightSleep(int millisec)
 {
-  blinkMorseCode("A", GREEN_LED_PIN, 1,TEST);
+  // blinkMorseCode("A", GREEN_LED_PIN, 1,TEST);
   debugPrintln("Light-Sleep-Modus aktiviert");
   mydelay(100,TEST);                                       // Warte 100 Millisekunden
   esp_sleep_enable_timer_wakeup(millisec * 1000); // Zeit in Mikrosekunden
@@ -42,7 +42,7 @@ void enableModemSleep()
 // Funktion zur Deaktivierung des Modem-Sleep-Modus
 void disableModemSleep()
 {
-  blinkMorseCode("M", GREEN_LED_PIN, 1,TEST);
+  // blinkMorseCode("M", GREEN_LED_PIN, 1,TEST);
   esp_wifi_set_ps(WIFI_PS_NONE); // Deaktivieren des Modem-Sleep-Modus
   WiFi.mode(WIFI_STA);           // Aktivieren des WiFi-Moduls
   debugPrintln("Modem-Sleep-Modus deaktiviert");

@@ -38,6 +38,7 @@
  * https://github.com/espressif/arduino-esp32/tree/master/libraries/SD
  */
 
+#include <pins.h>
 #include <SD.h>
 #include "SD_card.h"
 #include <HardwareSerial.h>
@@ -72,49 +73,20 @@ void debugPrintln(const String &message) {
   writeDebug(message + "\n");
 }
 
-void appendFile(fs::FS &fs, const char *path, const char *message) {
-  File file = fs.open(path, FILE_APPEND);
-  if (!file) {
-    // Serial.println("Failed to open file for appending");
-    return;
-  }
-  if (file.print(message)) {
-    // Serial.println("Message appended");
-  } else {
-    // Serial.println("Append failed");
-  }
-  file.close(); // Stellen Sie sicher, dass die Datei geschlossen wird
-}
 
-void listDir(fs::FS &fs, const char *dirname, uint8_t levels) {
-  Serial.printf("Listing directory: %s\n", dirname);
-
-  File root = fs.open(dirname);
-  if (!root) {
-    Serial.println("Failed to open directory");
-    return;
-  }
-  if (!root.isDirectory()) {
-    Serial.println("Not a directory");
-    return;
-  }
-
-  File file = root.openNextFile();
-  while (file) {
-    if (file.isDirectory()) {
-      Serial.print("  DIR : ");
-      Serial.println(file.name());
-      if (levels) {
-        listDir(fs, file.path(), levels - 1);
-      }
+String generateFileName(TinyGPSPlus& gps) {
+    char fileName[32];
+    if (gps.date.isValid()) {
+        snprintf(fileName, sizeof(fileName), "/GPS_%04d%02d%02d.csv", 
+            gps.date.year(), 
+            gps.date.month(), 
+            gps.date.day());
     } else {
-      Serial.print("  FILE: ");
-      Serial.print(file.name());
-      Serial.print("  SIZE: ");
-      Serial.println(file.size());
+        // Fallback wenn kein gültiges GPS-Datum verfügbar
+        snprintf(fileName, sizeof(fileName), "/GPS_data.csv");
     }
-    file = root.openNextFile();
-  }
+    Serial.printf("Generated filename: %s\n", fileName);
+    return String(fileName);
 }
 
 void createDir(fs::FS &fs, const char *path) {
@@ -126,6 +98,37 @@ void createDir(fs::FS &fs, const char *path) {
   }
 }
 
+bool listDirectory(fs::FS &fs, const char * dirname, uint8_t levels) {
+  Serial.printf("Listing directory: %s\n", dirname);
+
+  File root = fs.open(dirname);
+  if(!root) {
+      Serial.println("Failed to open directory");
+      return false;
+  }
+  if(!root.isDirectory()) {
+      Serial.println("Not a directory");
+      return false;
+  }
+
+  File file = root.openNextFile();
+  while(file) {
+      if(file.isDirectory()) {
+          Serial.print("  DIR : ");
+          Serial.println(file.name());
+          if(levels) {
+              listDirectory(fs, file.name(), levels -1);
+          }
+      } else {
+          Serial.print("  FILE: ");
+          Serial.print(file.name());
+          Serial.print("  SIZE: ");
+          Serial.println(file.size());
+      }
+      file = root.openNextFile();
+  }
+  return true;
+}
 void removeDir(fs::FS &fs, const char *path) {
   Serial.printf("Removing Dir: %s\n", path);
   if (fs.rmdir(path)) {
@@ -151,20 +154,46 @@ void readFile(fs::FS &fs, const char *path) {
   file.close();
 }
 
-void writeFile(fs::FS &fs, const char *path, const char *message) {
-  Serial.printf("Writing file: %s\n", path);
+bool writeFile(fs::FS &fs, const char * path, const char * message) {
+    Serial.printf("Writing file: %s\n", path);
 
-  File file = fs.open(path, FILE_WRITE);
-  if (!file) {
-    Serial.println("Failed to open file for writing");
-    return;
-  }
-  if (file.print(message)) {
-    Serial.println("File written");
-  } else {
-    Serial.println("Write failed");
-  }
-  file.close();
+    File file = fs.open(path, FILE_WRITE);
+    if(!file) {
+        Serial.println("Failed to open file for writing");
+        return false;
+    }
+    
+    size_t bytesWritten = file.print(message);
+    if(bytesWritten == 0) {
+        Serial.println("Write failed");
+        file.close();
+        return false;
+    }
+    
+    Serial.printf("Wrote %d bytes to file\n", bytesWritten);
+    file.close();
+    return true;
+}
+
+bool appendFile(fs::FS &fs, const char * path, const char * message) {
+    Serial.printf("Appending to file: %s\n", path);
+
+    File file = fs.open(path, FILE_APPEND);
+    if(!file) {
+        Serial.println("Failed to open file for appending");
+        return false;
+    }
+    
+    size_t bytesWritten = file.print(message);
+    if(bytesWritten == 0) {
+        Serial.println("Append failed");
+        file.close();
+        return false;
+    }
+    
+    Serial.printf("Appended %d bytes to file\n", bytesWritten);
+    file.close();
+    return true;
 }
 
 void renameFile(fs::FS &fs, const char *path1, const char *path2) {
@@ -226,12 +255,6 @@ void testFileIO(fs::FS &fs, const char *path) {
   file.close();
 }
 
-String generateFileName(TinyGPSPlus &gps) {
-  char fileName[32];
-  snprintf(fileName, sizeof(fileName), "/log_%04d_%02d_%02d.csv", gps.date.year(), gps.date.month(), gps.date.day());
-  return String(fileName);
-}
-
 // filepath: /c:/esp32/GnssLogger/src/SD_card.cpp
 char getDirectionOfLat(double latitude) {
   return (latitude >= 0) ? 'N' : 'S';
@@ -270,7 +293,7 @@ bool initializeSDCard() {
   vTaskDelay(2000 / portTICK_PERIOD_MS);// 1 Sekunde Verzögerung
   SPI.begin(SD_SCLK, SD_MISO, SD_MOSI);
   // Initialisiere die SD-Karte
-  if (!SD.begin(SD_CS_PIN)) {
+  if (!SD.begin(SD_CS, SPI)) {
     Serial.println("Card Mount Failed");
     return false;
   } else {
@@ -293,4 +316,23 @@ bool initializeSDCard() {
       return true;
     }
   }
+}
+
+void checkFile(fs::FS &fs, const char * path) {
+    File file = fs.open(path);
+    if(!file) {
+        Serial.printf("Failed to open file for reading: %s\n", path);
+        return;
+    }
+
+    Serial.printf("File %s exists, size: %d bytes\n", path, file.size());
+    
+    if(file.size() > 0) {
+        Serial.println("First 128 bytes of file:");
+        char buffer[129] = {0};
+        file.read((uint8_t*)buffer, 128);
+        Serial.println(buffer);
+    }
+    
+    file.close();
 }

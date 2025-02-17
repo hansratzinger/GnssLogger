@@ -1,6 +1,5 @@
-#ifndef GNSS_MODULE_H
 #define GNSS_MODULE_H
-
+#pragma once
 #include <HardwareSerial.h>
 #include <TinyGPS++.h>
 #include <WiFi.h> // Einbinden der WiFi-Bibliothek
@@ -37,5 +36,3 @@ void debugPrintln(const String &message);
 
 // Funktion zur Berechnung der Zeitdifferenz zwischen gpstime und gpstimeLast
 unsigned long getTimeDifference(const String &gpstime, const String &gpstimeLast);
-
-#endif // GNSS_MODULE_H

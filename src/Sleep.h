@@ -1,6 +1,6 @@
 #ifndef SLEEP_H
 #define SLEEP_H
-
+#pragma once
 #include <Arduino.h>
 #include <deque>
 #include "my_Helpers.h"
@@ -12,8 +12,8 @@ void disableModemSleep();
 void saveStationPositionsToRTC(const std::deque<std::pair<double, double>>& stationPositions);
 void loadStationPositionsFromRTC(std::deque<std::pair<double, double>>& stationPositions);
 
-extern const int RED_LED_PIN; // in main.cpp definiert für rote LED
-extern const int GREEN_LED_PIN; // in main.cpp definiert für grüne LED
+// extern const int RED_LED_PIN; // in main.cpp definiert für rote LED
+// extern const int GREEN_LED_PIN; // in main.cpp definiert für grüne LED
 
 // Definition der RTC-Variablen
 
