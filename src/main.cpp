@@ -15,7 +15,7 @@
 #include <SD.h>
 #include <SPI.h>
 #include <I2Cdev.h>
-#include <MPU6050.h>
+// #include <MPU6050.h>
 #include "esp_log.h"
 #include <FS.h>
 
@@ -45,7 +45,9 @@ const bool TEST = true; // Definition der Konstante TEST
 unsigned long lastPositionTime = 0;
 unsigned long currentTime = 0;
 
-const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;acc/x;acc/y;acc/z;gyro/x;gyro/y;gyro/z;temp/C\n";
+// Alte Header-Zeile mit acc,gyro,temp
+// const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m;acc/x;acc/y;acc/z;gyro/x;gyro/y;gyro/z;temp/C\n";
+const char firstline[] = "Date;UTC;Lat;N/S;Lon;E/W;knots;Alt/m;HDOP;Satellites;LatDiff;LonDiff;Distance/m\n";
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -53,52 +55,50 @@ TinyGPSPlus gps;
 // Create an instance of the HardwareSerial class for Serial 2
 HardwareSerial gpsSerial(1); // Initialisierung von gpsSerial
 
-// Nach den globalen Variablen hinzufügen:
+// Simulierte GPS-Daten für Testzwecke
+// void simulateGPS(TinyGPSPlus& gps) {
+//     static uint32_t timestamp = 0;
+//     static double lat = 48.484272;  // Startposition
+//     static double lon = 16.471992;
+//     static double alt = 145.3;
+//     static float speed = 0.8;
+//     static int satellites = 10;
+//     static float hdop = 1.2;
+    
+//     // Zeitstempel aktualisieren
+//     timestamp += 1000; // 1 Sekunde weiterzählen
+    
+//     // Position leicht ändern
+//     lat += 0.000010;  // ca. 1m nach Norden
+//     lon += 0.000015;  // ca. 1m nach Osten
+    
+//     // TinyGPS+ Daten mittels encode() updaten
+//     char nmea[100];
+//     int year = 2024;
+//     int month = 2;
+//     int day = 17;
+//     int hour = 14;
+//     int minute = 30;
+//     int second = timestamp / 1000 % 60;
 
-// Simulierte GPS-Daten
-void simulateGPS(TinyGPSPlus& gps) {
-    static uint32_t timestamp = 0;
-    static double lat = 48.484272;  // Startposition
-    static double lon = 16.471992;
-    static double alt = 145.3;
-    static float speed = 0.8;
-    static int satellites = 10;
-    static float hdop = 1.2;
+//     // GPRMC Satz generieren
+//     snprintf(nmea, sizeof(nmea), 
+//         "$GPRMC,%02d%02d%02d.000,A,%02.6f,N,%03.6f,E,%.1f,%.1f,170224,,*",
+//         hour, minute, second, lat, lon, speed, hdop);
     
-    // Zeitstempel aktualisieren
-    timestamp += 1000; // 1 Sekunde weiterzählen
+//     // Checksumme berechnen und anhängen
+//     byte checksum = 0;
+//     for(int i = 1; i < strlen(nmea) - 1; i++) {
+//         checksum ^= nmea[i];
+//     }
+//     char final_nmea[100];
+//     snprintf(final_nmea, sizeof(final_nmea), "%s%02X\r\n", nmea, checksum);
     
-    // Position leicht ändern
-    lat += 0.000010;  // ca. 1m nach Norden
-    lon += 0.000015;  // ca. 1m nach Osten
-    
-    // TinyGPS+ Daten mittels encode() updaten
-    char nmea[100];
-    int year = 2024;
-    int month = 2;
-    int day = 17;
-    int hour = 14;
-    int minute = 30;
-    int second = timestamp / 1000 % 60;
-
-    // GPRMC Satz generieren
-    snprintf(nmea, sizeof(nmea), 
-        "$GPRMC,%02d%02d%02d.000,A,%02.6f,N,%03.6f,E,%.1f,%.1f,170224,,*",
-        hour, minute, second, lat, lon, speed, hdop);
-    
-    // Checksumme berechnen und anhängen
-    byte checksum = 0;
-    for(int i = 1; i < strlen(nmea) - 1; i++) {
-        checksum ^= nmea[i];
-    }
-    char final_nmea[100];
-    snprintf(final_nmea, sizeof(final_nmea), "%s%02X\r\n", nmea, checksum);
-    
-    // NMEA Satz an TinyGPS+ übergeben
-    for(int i = 0; i < strlen(final_nmea); i++) {
-        gps.encode(final_nmea[i]);
-    }
-}
+//     // NMEA Satz an TinyGPS+ übergeben
+//     for(int i = 0; i < strlen(final_nmea); i++) {
+//         gps.encode(final_nmea[i]);
+//     }
+// }
 
 
 // Funktion zur Berechnung der Zeitdifferenz zwischen gpstime und gpstimeLast
@@ -229,10 +229,12 @@ void processPosition() {
     snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), 
         ";%.6f;%.6f;%.6f", latDifference, lonDifference, positionDifference);
 
-    // MPU6050-Daten anhängen
+    // MPU6050-Block 
+    /* 
     snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), 
         ";%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f", 
         accelX, accelY, accelZ, gyroX, gyroY, gyroZ, temp);
+    */
 
     // Dezimalpunkte durch Kommas ersetzen
     for (size_t i = 0; i < strlen(logging); i++) {
@@ -278,63 +280,36 @@ void navigation(void * parameter) {
         xSemaphoreGive(serialMutex);
     }
     
-    // for(;;) {
-    //     // Wenn keine GPS-Daten verfügbar sind, kurzes Delay und Watchdog Reset
-    //     if (!gpsSerial.available()) {
-    //         if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
-    //             esp_task_wdt_reset();
-    //             xSemaphoreGive(watchdogMutex);
-    //         }
-    //         vTaskDelay(pdMS_TO_TICKS(100));  // Kürzeres Delay statt portMAX_DELAY
-    //         continue;
-    //     }
-
-    //     // GPS-Daten verarbeiten wenn verfügbar
-    //     while (gpsSerial.available() > 0) {
-    //         if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-    //             Serial.print("."); // waiting for GPS data
-    //             xSemaphoreGive(serialMutex);
-    //         }
-    //         gps.encode(gpsSerial.read());
-            
-    //         // Watchdog während der Datenverarbeitung zurücksetzen
-    //         if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
-    //             esp_task_wdt_reset();
-    //             xSemaphoreGive(watchdogMutex);
-    //         }
-    //     }
-        
-    //     if (gps.location.isUpdated()) {
-    //         digitalWrite(RED_LED_PIN, HIGH);
-    //         if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-    //             Serial.println("GPS data received");
-    //             xSemaphoreGive(serialMutex);
-    //         }
-    //         processPosition();  // Verarbeite die GPS-Daten
-    //         digitalWrite(RED_LED_PIN, LOW);
-    //     }
-        
-    //     // Watchdog zurücksetzen mit Mutex
-    //     if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
-    //         esp_task_wdt_reset();
-    //         xSemaphoreGive(watchdogMutex);
-    //     }
-        
-    //     vTaskDelay(pdMS_TO_TICKS(100));
-    // }
-
-// In der navigation()-Funktion den GPS-Teil wie folgt ändern:
-
-
-    
     for(;;) {
-        // GPS-Daten simulieren
-        simulateGPS(gps);
+        // Wenn keine GPS-Daten verfügbar sind, kurzes Delay und Watchdog Reset
+        if (!gpsSerial.available()) {
+            if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
+                esp_task_wdt_reset();
+                xSemaphoreGive(watchdogMutex);
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));  // Kürzeres Delay statt portMAX_DELAY
+            continue;
+        }
+
+        // GPS-Daten verarbeiten wenn verfügbar
+        while (gpsSerial.available() > 0) {
+            if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+                Serial.print("."); // waiting for GPS data
+                xSemaphoreGive(serialMutex);
+            }
+            gps.encode(gpsSerial.read());
+            
+            // Watchdog während der Datenverarbeitung zurücksetzen
+            if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
+                esp_task_wdt_reset();
+                xSemaphoreGive(watchdogMutex);
+            }
+        }
         
         if (gps.location.isUpdated()) {
             digitalWrite(RED_LED_PIN, HIGH);
             if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-                Serial.println("Simulated GPS data received");
+                Serial.println("GPS data received");
                 xSemaphoreGive(serialMutex);
             }
             processPosition();  // Verarbeite die GPS-Daten
@@ -347,8 +322,35 @@ void navigation(void * parameter) {
             xSemaphoreGive(watchdogMutex);
         }
         
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Längeres Delay für die Simulation
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
+
+
+
+
+    
+    // for(;;) {
+    //     // GPS-Daten simulieren
+    //     simulateGPS(gps);
+        
+    //     if (gps.location.isUpdated()) {
+    //         digitalWrite(RED_LED_PIN, HIGH);
+    //         if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
+    //             Serial.println("Simulated GPS data received");
+    //             xSemaphoreGive(serialMutex);
+    //         }
+    //         processPosition();  // Verarbeite die GPS-Daten
+    //         digitalWrite(RED_LED_PIN, LOW);
+    //     }
+        
+    //     // Watchdog zurücksetzen mit Mutex
+    //     if(xSemaphoreTake(watchdogMutex, pdMS_TO_TICKS(100))) {
+    //         esp_task_wdt_reset();
+    //         xSemaphoreGive(watchdogMutex);
+    //     }
+        
+    //     vTaskDelay(pdMS_TO_TICKS(1000)); // Längeres Delay für die Simulation
+    // }
 }
 
 void communication(void * parameter) {
