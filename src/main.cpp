@@ -17,8 +17,8 @@
 #include <I2Cdev.h>
 #include "esp_log.h"
 #include <FS.h>
-#include <esp_now.h>
-
+#include <esp_now.h> // ESP-NOW Bibliothek
+#include <WiFi.h>    // WiFi Bibliothek
 
 #define DEBUG_SD 1  // Debug-Ausgaben aktivieren
 #define MUTEX_TIMEOUT_MS 1000  // 1 Sekunde Timeout für Mutex-Operationen
@@ -35,15 +35,13 @@ enum MutexIndex { WATCHDOG_MUTEX = 0, SERIAL_MUTEX = 1, LED_MUTEX = 2, SD_MUTEX 
 
 // Task Handles
 xTaskHandle navigationTask = NULL;
-xTaskHandle bluetoothTaskHandle = NULL; // Bluetooth Task Handle
 
 // Vorwärtsdeklarationen der Task-Funktionen
 void navigation(void * parameter);
 void writeBufferToSD();
 void setLed(bool state, uint8_t ledPin, bool TEST) ;
-void bluetooth(void * parameter); // Bluetooth Task
 
-const String BRANCH="bluetooth"; // Branch name
+const String BRANCH="esp-now"; // Branch name
 const String RELEASE="2.2.0"; // Branch name
 
 // Buffer für SD-Karten Schreibzugriffe
@@ -69,9 +67,6 @@ const char* firstline = CSV_HEADER;  // Verwende CSV_HEADER als firstline
 
 // Konstanten für Task-Konfiguration
 static const uint32_t NAVIGATION_STACK_SIZE = 16384;
-static const uint32_t BLUETOOTH_STACK_SIZE = 8192; // Bluetooth Stack Size
-static const uint8_t NAVIGATION_PRIORITY = 2;
-static const uint8_t BLUETOOTH_PRIORITY = 1; // Bluetooth Priority
 
 static const uint32_t TASK_DELAY_MS = 100;
 static const size_t GPS_BUFFER_SIZE = 256;  // Vergrößert und aligned
@@ -100,8 +95,20 @@ TinyGPSPlus gps;
 // Create an instance of the HardwareSerial class for Serial 2
 HardwareSerial gpsSerial(1); // Initialisierung von gpsSerial
 
-// BluetoothSerial-Objekt erstellen
-BluetoothSerial SerialBT;
+// Struktur für die Daten, die gesendet werden sollen
+typedef struct struct_message {
+    int rpm;
+    double latitude;
+    double longitude;
+} struct_message;
+
+struct_message myData;
+
+// MAC-Adresse des Empfängers (GprsSender)
+uint8_t broadcastAddress[] = {0x34, 0x98, 0x7A, 0x86, 0xF5, 0xCC}; // Hier die MAC Adresse des Empfänger ESP32 eintragen
+
+// ESP-NOW Status
+esp_now_peer_info_t peerInfo;
 
 // Mutex Helper Funktionen
 bool initializeMutexes() {
@@ -413,6 +420,14 @@ void navigation(void * parameter) {
         if (gps.location.isUpdated()) {
             processPosition();  // GPS-Daten verarbeiten
 
+            // Daten für den Versand vorbereiten (Beispielwerte, ersetzen Sie diese durch Ihre tatsächlichen Werte)
+            int rpmValue = 1234; // Beispielwert
+            double latitudeValue = gps.location.lat();
+            double longitudeValue = gps.location.lng();
+
+            // Daten per ESP-NOW senden
+            sendDataViaESPNow(rpmValue, latitudeValue, longitudeValue);
+
             // LED-Feedback für neue Position
             setLed(true, GREEN_LED_PIN, TEST);
             vTaskDelay(pdMS_TO_TICKS(150));
@@ -469,31 +484,6 @@ void testSDCard() {
     Serial.println("testSDCard: SD-Karten Test abgeschlossen");
 }
 
-void bluetooth(void * parameter) {
-    esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, true); // Längerer Timeout
-    esp_task_wdt_add(NULL);
-
-    for(;;) {
-        // Daten aus dem Puffer lesen und per Bluetooth senden
-        if (takeMutex(SERIAL_MUTEX, pdMS_TO_TICKS(100))) {
-            // Hier den Pufferinhalt per Bluetooth senden
-            // Beispiel: SerialBT.println(buffer);
-            // Beachten: Der Puffer muss vor dem Senden gefüllt werden
-            if (bufferIndex > 0) {
-                Serial.print("Bluetooth sending: "); // Überwachung im Serial Monitor
-                Serial.write((uint8_t*)buffer, bufferIndex);
-                SerialBT.write((uint8_t*)buffer, bufferIndex);
-                SerialBT.println(); // Zeilenumbruch hinzufügen
-                Serial.println();
-                bufferIndex = 0; // Puffer zurücksetzen
-            }
-            giveMutex(SERIAL_MUTEX);
-        }
-        esp_task_wdt_reset();
-        vTaskDelay(pdMS_TO_TICKS(2000));  // 2 Sekunden Delay
-    }
-}
-
 void setup() {
     Serial.begin(SERIALMONITOR_BAUD);
     delay(1000);
@@ -521,6 +511,29 @@ void setup() {
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
+    // WLAN initialisieren
+    WiFi.mode(WIFI_STA);
+
+    // ESP-NOW initialisieren
+    if (esp_now_init() != ESP_OK) {
+        Serial.println("Error initializing ESP-NOW");
+        return;
+    }
+
+    // ESP-NOW Rolle festlegen
+    esp_now_register_send_cb(OnDataSent);
+
+    // Peer-Informationen definieren
+    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    peerInfo.channel = 0;  
+    peerInfo.encrypt = false;
+
+    // Peer registrieren
+    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+        Serial.println("Failed to add peer");
+        return;
+    }
+
     // Tasks mit angepassten Prioritäten erstellen
     BaseType_t result = xTaskCreatePinnedToCore(
         navigation,
@@ -537,29 +550,30 @@ void setup() {
         while(1) delay(1000);
     }
 
-    result = xTaskCreatePinnedToCore(
-        bluetooth,
-        "Bluetooth",
-        BLUETOOTH_STACK_SIZE,   // Stack-Größe angepasst
-        NULL,
-        BLUETOOTH_PRIORITY,      // Niedrigere Priorität
-        &bluetoothTaskHandle,
-        0
-    );
-
-    if (result != pdPASS) {
-        Serial.println("Bluetooth Task Erstellung fehlgeschlagen");
-        while(1) delay(1000);
-    }
-
-    // Bluetooth initialisieren
-    SerialBT.begin("GNSS_Logger"); // Bluetooth-Name
-    Serial.println("Bluetooth gestartet! Geräte können sich jetzt verbinden.");
-
     // Watchdog konfigurieren
     esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, false);  // Watchdog nicht tödlich
 }
 
 void loop() {
   // Nichts zu tun
+}
+
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  Serial.print("\r\nLast Packet Send Status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
+
+void sendDataViaESPNow(int rpmValue, double latitudeValue, double longitudeValue) {
+    // Daten für den Versand vorbereiten
+    myData.rpm = rpmValue;
+    myData.latitude = latitudeValue;
+    myData.longitude = longitudeValue;
+
+    // Daten per ESP-NOW senden
+    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+
+    if (result != ESP_OK) {
+        Serial.print("Error sending the data");
+        Serial.println(esp_err_to_name(result));
+    }
 }
