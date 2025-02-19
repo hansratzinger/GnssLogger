@@ -1,6 +1,14 @@
+#ifndef MY_HELPERS_H
+#define MY_HELPERS_H
 #include <Arduino.h>
 #include <map>
 #include "my_Helpers.h"
+#include "pins.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
+// Vorwärtsdeklarationen der Task-Funktionen
+void setLed(bool state, uint8_t ledPin, bool TEST);
 
 // Define the Morse code for each character
 std::map<char, String> morseCode = {
@@ -37,7 +45,7 @@ const long interval = 1000; // Intervallzeit in Millisekunden
  * each dot and dash, a 500 ms LOW signal between each character, and a 1000 ms
  * LOW signal between each repetition of the text.
  */
-void blinkMorseCode(const String &text, int ledPin, int repeatCount, bool TEST) {
+void blinkMorseCode(const String &text, uint8_t ledPin, int repeatCount, bool TEST) {
   if (!TEST) {
     return;
   } 
@@ -50,81 +58,30 @@ void blinkMorseCode(const String &text, int ledPin, int repeatCount, bool TEST) 
         String code = morseCode[c];
         for (char m : code) {
           if (m == '.') {
-            digitalWrite(ledPin, HIGH);
-            mydelay(200,TEST); // Punkt: 200 ms
-            digitalWrite(ledPin, LOW);
+            setLed(true, ledPin, true);   // Grüne LED ein
+            vTaskDelay(pdMS_TO_TICKS(200));      // 500ms warten
+            setLed(false, ledPin, true);  // Grüne LED aus
+            vTaskDelay(pdMS_TO_TICKS(200));      // 500ms warten
           } else if (m == '-') {
-            digitalWrite(ledPin, HIGH);
-            mydelay(500,TEST); // Strich: 500 ms
-            digitalWrite(ledPin, LOW);
+            setLed(true, ledPin, true);   // Grüne LED ein
+            vTaskDelay(pdMS_TO_TICKS(500));      // 500ms warten
+            setLed(false, ledPin, true);  // Grüne LED aus
+            vTaskDelay(pdMS_TO_TICKS(500));      // 500ms warten
           }
-          delay(200); // Pause zwischen Punkten und Strichen
+          vTaskDelay(pdMS_TO_TICKS(200));      // 500ms warten
         }
-        delay(500); // Pause zwischen Buchstaben
+        vTaskDelay(pdMS_TO_TICKS(500));      // 500ms warten
       }
     }
-    delay(1000); // Pause zwischen Wiederholungen
+    vTaskDelay(pdMS_TO_TICKS(1000));      // 500ms warten
   }
 }
 
-// Beispielaufruf der Funktion in setup oder loop
-// void setup() {
-//   Serial.begin(115200);
-//   String text = "HELLO";
-//   int ledPin = RED_LED_PIN;
-//   int repeatCount = 3;
-//   blinkMorseCode(text, ledPin, repeatCount);
+// void setLed(bool state, uint8_t ledPin, bool TEST) {
+//     if (!TEST) return;
+    
+//     pinMode(ledPin, OUTPUT);
+//     digitalWrite(ledPin, state);
 // }
 
-// void loop() {
-//   // Ihr Code hier
-// }
-
-
-void ledON(int ledPin, bool TEST) {
-  if (!TEST) {
-    return;
-  }
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, HIGH);
-}
-
-void ledOFF(int ledPin, bool TEST) {
-  if (!TEST) {
-    return;
-  }
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, LOW);
-}
-
-void ledMode(bool mode, bool TEST) {
-  if (!TEST) {
-    return;
-  } 
-  if (mode) {
-    // ledON(GREEN_LED_PIN, TEST);
-    ledOFF(RED_LED_PIN, TEST);
-  } else {
-    ledON(RED_LED_PIN, TEST);
-    // ledOFF(GREEN_LED_PIN, TEST);
-  }
-}
-
-// mydelayTime in msec, TEST = true -> delay, TEST = false -> no delay
-void mydelay(unsigned long mydelayTimeMillis, bool TEST) {
-  if (!TEST) {
-    return;
-  }  
-  unsigned long currentMillis = millis();
-  while (millis() - currentMillis < mydelayTimeMillis) {
-    // Warten
-  }
-}
-
-void appendText(char* text, const char* toappendText) {
-    strcat(text, toappendText); // Fügt 'text' an 'base' an
-
-    // Verwendung
-    // char message[50] = "Hello";
-    // appendText(message, " World!");
-}
+#endif

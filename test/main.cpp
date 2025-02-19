@@ -3,7 +3,7 @@
 #define GPS_BAUD 115200
 #define SERIALMONITOR_BAUD 115200
 
-// #include<ArduinoTrace.h>
+// #include<ArduinoTrace.h>  
 #include <Wire.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -17,9 +17,7 @@
 #include <I2Cdev.h>
 #include "esp_log.h"
 #include <FS.h>
-#include <esp_now.h>
-
-
+#include <BluetoothSerial.h> // Bluetooth-Bibliothek
 #define DEBUG_SD 1  // Debug-Ausgaben aktivieren
 #define MUTEX_TIMEOUT_MS 1000  // 1 Sekunde Timeout für Mutex-Operationen
 
@@ -35,16 +33,16 @@ enum MutexIndex { WATCHDOG_MUTEX = 0, SERIAL_MUTEX = 1, LED_MUTEX = 2, SD_MUTEX 
 
 // Task Handles
 xTaskHandle navigationTask = NULL;
-xTaskHandle bluetoothTaskHandle = NULL; // Bluetooth Task Handle
+xTaskHandle communicationTask = NULL;
 
 // Vorwärtsdeklarationen der Task-Funktionen
 void navigation(void * parameter);
+void communication(void * parameter);
 void writeBufferToSD();
 void setLed(bool state, uint8_t ledPin, bool TEST) ;
-void bluetooth(void * parameter); // Bluetooth Task
 
-const String BRANCH="bluetooth"; // Branch name
-const String RELEASE="2.2.0"; // Branch name
+const String BRANCH="release-2.1-GSM-FreeRTOS"; // Branch name
+const String RELEASE="2.1.0"; // Branch name
 
 // Buffer für SD-Karten Schreibzugriffe
 static const int BUFFER_SIZE = 4096;
@@ -55,12 +53,12 @@ int bufferIndex = 0;
 unsigned long lastSwitchTime = 0, timeDifference = 0;
 double positionDifference = 0.0;
 char gpstime[10] = "", date[11] = "", lat[15] = "", directionLat[2] = "", lon[15] = "", directionLng[2] = "", speed[10] = "", altitude[10] = "", hdop[10] = "", satellites[10] = "";
-char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";
+char gpstimeLast[10] = "", dateLast[11] = "", latLast[15] = "", lonLast[15] = "", speedLast[10] = "", altitudeLast[10] = "", hdopLast[10] = "", satellitesLast[10] = "", loggingLast[100] = "", firstlineLast[100] = "";  
 char logging[130] = "";
 char gpsData[130] = "";
 double distanceLast = 0.0, latDifference = 0.0, lonDifference = 0.0;
 
-const bool TEST = true; // Definition der Konstante TEST
+const bool TEST = true; // Definition der Konstante TEST  
 unsigned long lastPositionTime = 0;
 unsigned long currentTime = 0;
 
@@ -69,9 +67,9 @@ const char* firstline = CSV_HEADER;  // Verwende CSV_HEADER als firstline
 
 // Konstanten für Task-Konfiguration
 static const uint32_t NAVIGATION_STACK_SIZE = 16384;
-static const uint32_t BLUETOOTH_STACK_SIZE = 8192; // Bluetooth Stack Size
+static const uint32_t COMMUNICATION_STACK_SIZE = 8192;  // Erhöht
 static const uint8_t NAVIGATION_PRIORITY = 2;
-static const uint8_t BLUETOOTH_PRIORITY = 1; // Bluetooth Priority
+static const uint8_t COMMUNICATION_PRIORITY = 1;
 
 static const uint32_t TASK_DELAY_MS = 100;
 static const size_t GPS_BUFFER_SIZE = 256;  // Vergrößert und aligned
@@ -97,11 +95,10 @@ struct GPSState {
 // The TinyGPS++ object
 TinyGPSPlus gps;
 
+BluetoothSerial SerialBT;
+
 // Create an instance of the HardwareSerial class for Serial 2
 HardwareSerial gpsSerial(1); // Initialisierung von gpsSerial
-
-// BluetoothSerial-Objekt erstellen
-BluetoothSerial SerialBT;
 
 // Mutex Helper Funktionen
 bool initializeMutexes() {
@@ -129,7 +126,7 @@ void giveMutex(MutexIndex index) {
 // LED Funktion vereinfacht
 void setLed(bool state, uint8_t pin, bool TEST = true) {
     if (!TEST) return;
-
+    
     if (takeMutex(LED_MUTEX, pdMS_TO_TICKS(100))) {
         pinMode(pin, OUTPUT);
         digitalWrite(pin, state);
@@ -142,13 +139,13 @@ bool initSDCard() {
     SPIClass spi = SPIClass(VSPI);
     spi.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
 
-    // In setup() nach SPI.begin():
+        // In setup() nach SPI.begin():
     Serial.println("SPI Pins:");
     Serial.printf("MISO: %d\n", SD_MISO);
     Serial.printf("MOSI: %d\n", SD_MOSI);
     Serial.printf("SCK:  %d\n", SD_SCLK);
     Serial.printf("CS:   %d\n", SD_CS);
-
+     
     // SD-Karte mit mehreren Versuchen initialisieren
     int retries = 3;
     while (retries > 0) {
@@ -172,7 +169,7 @@ bool initSDCard() {
 bool initGPS() {
     Serial.println("Initializing GPS Serial...");
     gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
-
+    
     // Erweiterte Initialisierungsversuche
     int gpsRetries = 5;
     while (gpsRetries > 0) {
@@ -181,7 +178,7 @@ bool initGPS() {
             while(gpsSerial.available()) {
                 gpsSerial.read();
             }
-
+            
             // Warte auf erste gültige NMEA-Daten
             unsigned long startTime = millis();
             while(millis() - startTime < 2000) {  // 2 Sekunden Timeout
@@ -195,12 +192,12 @@ bool initGPS() {
                 vTaskDelay(pdMS_TO_TICKS(10));
             }
         }
-
+        
         Serial.printf("Waiting for GPS Serial, attempt %d of 5...\n", 6-gpsRetries);
         vTaskDelay(pdMS_TO_TICKS(1000));
         gpsRetries--;
     }
-
+    
     return false;
 }
 
@@ -210,7 +207,7 @@ void bufferData(const char* data) {
         // Buffer ist voll - erst schreiben
         writeBufferToSD();
     }
-
+    
     // Sicheres Kopieren
     memcpy(buffer + bufferIndex, data, len);
     bufferIndex += len;
@@ -219,71 +216,71 @@ void bufferData(const char* data) {
 // Modifizierte writeBufferToSD Funktion:
 void writeBufferToSD() {
     if (bufferIndex == 0) {
-#if DEBUG_SD
+        #if DEBUG_SD
         if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
             Serial.println("DEBUG: Nichts zu schreiben (Buffer leer)");
             xSemaphoreGive(serialMutex);
         }
-#endif
+        #endif
         return;
     }
 
     if(xSemaphoreTake(sdMutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS))) {
-#if DEBUG_SD
+        #if DEBUG_SD
         if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
             Serial.printf("DEBUG: Versuche %d Bytes zu schreiben\n", bufferIndex);
             xSemaphoreGive(serialMutex);
         }
-#endif
+        #endif
 
         String fullPath = "/GPS/";
-
+        
         if(!SD.exists("/GPS")) {
-#if DEBUG_SD
+            #if DEBUG_SD
             if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
                 Serial.println("DEBUG: Erstelle GPS-Verzeichnis");
                 xSemaphoreGive(serialMutex);
             }
-#endif
+            #endif
 
             if(!SD.mkdir("/GPS")) {
-#if DEBUG_SD
+                #if DEBUG_SD
                 if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
                     Serial.println("DEBUG: Fehler beim Erstellen des GPS-Verzeichnisses");
                     xSemaphoreGive(serialMutex);
                 }
-#endif
+                #endif
                 xSemaphoreGive(sdMutex);
                 return;
             }
         }
-
+        
         fullPath += generateFileName(gps);
-
-#if DEBUG_SD
+        
+        #if DEBUG_SD
         if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
             Serial.printf("DEBUG: Öffne Datei: %s\n", fullPath.c_str());
             xSemaphoreGive(serialMutex);
         }
-#endif
+        #endif
 
         File file = SD.open(fullPath.c_str(), FILE_APPEND);
         if(!file) {
-#if DEBUG_SD
+            #if DEBUG_SD
             if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
                 Serial.println("DEBUG: Fehler beim Öffnen der Datei");
                 xSemaphoreGive(serialMutex);
             }
-#endif
+            #endif
             xSemaphoreGive(sdMutex);
             return;
         }
-
+        
         size_t bytesWritten = file.write((uint8_t*)buffer, bufferIndex);
-
-#if DEBUG_SD
+        
+        #if DEBUG_SD
         if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-            Serial.printf("DEBUG: Buffer Status - Geschrieben: %d von %d Bytes\n",
+            Serial.printf("DEBUG: Buffer Status - Geschrieben: %d von %d Bytes\n", 
                         bytesWritten, bufferIndex);
             Serial.printf("DEBUG: Erste 32 Bytes: ");
             for(int i = 0; i < min(32, bufferIndex); i++) {
@@ -292,17 +289,18 @@ void writeBufferToSD() {
             Serial.println();
             xSemaphoreGive(serialMutex);
         }
-#endif
+        #endif
 
         file.flush();
         file.close();
         xSemaphoreGive(sdMutex);
-
+        
         // Buffer zurücksetzen
         bufferIndex = 0;
     }
 }
 
+ 
 void processPosition() {
     // Statische Puffer statt dynamischer Speicherzuweisung
     static char lat[15];
@@ -318,10 +316,10 @@ void processPosition() {
     static char logging[130];
 
     if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-        Serial.println("Processing position data...");
-        xSemaphoreGive(serialMutex);
+      Serial.println("Processing position data...");
+      xSemaphoreGive(serialMutex);
     }
-
+    
     // GPS-Daten formatieren
     snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
     snprintf(lon, sizeof(lon), "%.6f", gps.location.lng());
@@ -333,9 +331,9 @@ void processPosition() {
     snprintf(directionLng, sizeof(directionLng), "%c", directionLngChar);
 
     // Zeit und Datum
-    snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d",
+    snprintf(gpstime, sizeof(gpstime), "%02d:%02d:%02d", 
         gps.time.hour(), gps.time.minute(), gps.time.second());
-    snprintf(date, sizeof(date), "%04d-%02d-%02d",
+    snprintf(date, sizeof(date), "%04d-%02d-%02d", 
         gps.date.year(), gps.date.month(), gps.date.day());
 
     // GPS-Daten
@@ -345,8 +343,8 @@ void processPosition() {
     snprintf(altitude, sizeof(altitude), "%.1f", gps.altitude.meters());
 
     // Logging-String zusammenbauen
-    snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s",
-        date, gpstime, lat, directionLat, lon, directionLng,
+    snprintf(logging, sizeof(logging), "%s;%s;%s;%s;%s;%s;%s;%s;%s;%s", 
+        date, gpstime, lat, directionLat, lon, directionLng, 
         speed, altitude, hdop, satellites);
 
     // Distanzberechnungen
@@ -360,8 +358,15 @@ void processPosition() {
     positionDifference = calculateDistance(currentLat, currentLon, lastLat, lastLon);
 
     // Differenzen anhängen
-    snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging),
+    snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), 
         ";%.6f;%.6f;%.6f", latDifference, lonDifference, positionDifference);
+
+    // MPU6050-Block 
+    /* 
+    snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging), 
+        ";%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f", 
+        accelX, accelY, accelZ, gyroX, gyroY, gyroZ, temp);
+    */
 
     // Dezimalpunkte durch Kommas ersetzen
     for (size_t i = 0; i < strlen(logging); i++) {
@@ -398,7 +403,7 @@ void navigation(void * parameter) {
 
     for(;;) {
         String rawData = "";
-
+        
         // GPS-Daten lesen
         if(takeMutex(SERIAL_MUTEX, pdMS_TO_TICKS(100))) {
             while (gpsSerial.available() > 0 && rawData.length() < GPS_BUFFER_SIZE - 1) {
@@ -412,7 +417,7 @@ void navigation(void * parameter) {
         // Wenn neue GPS-Position verfügbar
         if (gps.location.isUpdated()) {
             processPosition();  // GPS-Daten verarbeiten
-
+            
             // LED-Feedback für neue Position
             setLed(true, GREEN_LED_PIN, TEST);
             vTaskDelay(pdMS_TO_TICKS(150));
@@ -424,10 +429,32 @@ void navigation(void * parameter) {
             esp_task_wdt_reset();
             giveMutex(WATCHDOG_MUTEX);
         }
-
+        
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
+
+// void communication(void * parameter) {
+//     esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, true); // Längerer Timeout
+//     esp_task_wdt_add(NULL);
+
+//     for(;;) {
+//         setLed(true, RED_LED_PIN, TEST);
+        
+//         if(takeMutex(SERIAL_MUTEX, pdMS_TO_TICKS(100))) {
+//             Serial.println("Communication running");
+//             giveMutex(SERIAL_MUTEX);
+//         }
+        
+//         setLed(false, RED_LED_PIN, TEST);
+        
+//         // Watchdog zurücksetzen
+//         esp_task_wdt_reset();
+        
+//         // Längeres Task Delay
+//         vTaskDelay(pdMS_TO_TICKS(2000));  // 2 Sekunden statt 1
+//     }
+// }
 
 void testSDCard() {
     Serial.println("testSDCard: Starte SD-Karten Test");
@@ -443,7 +470,7 @@ void testSDCard() {
             Serial.println("testSDCard: Schliesse Datei");
             file.close();
             Serial.println("testSDCard: Datei erfolgreich geschrieben");
-
+            
             // Lese Test
             Serial.printf("testSDCard: Öffne Datei %s zum Lesen\n", testFile.c_str());
             file = SD.open(testFile.c_str());
@@ -469,7 +496,7 @@ void testSDCard() {
     Serial.println("testSDCard: SD-Karten Test abgeschlossen");
 }
 
-void bluetooth(void * parameter) {
+void bluetoothTask(void * parameter) {
     esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, true); // Längerer Timeout
     esp_task_wdt_add(NULL);
 
@@ -479,12 +506,10 @@ void bluetooth(void * parameter) {
             // Hier den Pufferinhalt per Bluetooth senden
             // Beispiel: SerialBT.println(buffer);
             // Beachten: Der Puffer muss vor dem Senden gefüllt werden
+
             if (bufferIndex > 0) {
-                Serial.print("Bluetooth sending: "); // Überwachung im Serial Monitor
-                Serial.write((uint8_t*)buffer, bufferIndex);
                 SerialBT.write((uint8_t*)buffer, bufferIndex);
                 SerialBT.println(); // Zeilenumbruch hinzufügen
-                Serial.println();
                 bufferIndex = 0; // Puffer zurücksetzen
             }
             giveMutex(SERIAL_MUTEX);
@@ -499,6 +524,9 @@ void setup() {
     delay(1000);
     Serial.println("Starting setup...");
 
+    SerialBT.begin("GNSS_Logger"); // Bluetooth-Name
+    Serial.println("Bluetooth gestartet! Geräte können sich jetzt verbinden.");
+
     // Mutexe initialisieren
     if (!initializeMutexes()) {
         Serial.println("FEHLER: Mutex-Initialisierung fehlgeschlagen");
@@ -510,17 +538,20 @@ void setup() {
     Serial.println("Mutexe erfolgreich erstellt");
 
     // SD-Karte initialisieren
-    bool sdCardInitialized = initSDCard();
-    if (!sdCardInitialized) {
-        Serial.println("SD-Karten-Initialisierung fehlgeschlagen. Das Programm wird ohne SD-Karten-Funktionalität fortgesetzt.");
-    } else {
+   if (!initSDCard()) {
+        Serial.println("FEHLER: SD-Karten-Initialisierung fehlgeschlagen. Erneuter Versuch...");
+        digitalWrite(RED_LED_PIN, !digitalRead(RED_LED_PIN));
+        delay(100); 
+    } else {    
         Serial.println("SD-Karte erfolgreich initialisiert");
-        delay(100);
+        delay(100); 
+        // navigation und communication Tasks erstellen
+        vTaskDelay(pdMS_TO_TICKS(1000));
         // Testen der SD-Karte
         testSDCard();
         vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
+    } 
+    
     // Tasks mit angepassten Prioritäten erstellen
     BaseType_t result = xTaskCreatePinnedToCore(
         navigation,
@@ -537,13 +568,28 @@ void setup() {
         while(1) delay(1000);
     }
 
-    result = xTaskCreatePinnedToCore(
-        bluetooth,
+    // result = xTaskCreatePinnedToCore(
+    //     communication,
+    //     "Communication",
+    //     8192,   // Stack-Größe angepasst
+    //     NULL,
+    //     1,      // Niedrigere Priorität
+    //     NULL,
+    //     0
+    // );
+
+    // if (result != pdPASS) {
+    //     Serial.println("Communication Task Erstellung fehlgeschlagen");
+    //     while(1) delay(1000);
+    // }
+
+    BaseType_t result = xTaskCreatePinnedToCore(
+        bluetoothTask,
         "Bluetooth",
-        BLUETOOTH_STACK_SIZE,   // Stack-Größe angepasst
+        8192,   // Stack-Größe angepasst
         NULL,
-        BLUETOOTH_PRIORITY,      // Niedrigere Priorität
-        &bluetoothTaskHandle,
+        1,      // Niedrigere Priorität
+        NULL,
         0
     );
 
@@ -551,10 +597,6 @@ void setup() {
         Serial.println("Bluetooth Task Erstellung fehlgeschlagen");
         while(1) delay(1000);
     }
-
-    // Bluetooth initialisieren
-    SerialBT.begin("GNSS_Logger"); // Bluetooth-Name
-    Serial.println("Bluetooth gestartet! Geräte können sich jetzt verbinden.");
 
     // Watchdog konfigurieren
     esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, false);  // Watchdog nicht tödlich
