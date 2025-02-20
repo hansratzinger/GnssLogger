@@ -4,9 +4,8 @@
 #define SERIALMONITOR_BAUD 115200
 
 #include "GNSS_module.h"
-#include "SD_card.h"
+#include "SD_MMC.h"
 #include <my_Helpers.h>
-#include <SD.h>
 #include <SPI.h>
 #include <FS.h>
 #include <esp_now.h> // ESP-NOW Bibliothek
@@ -36,6 +35,10 @@ const char* firstline = CSV_HEADER;  // Verwende CSV_HEADER als firstline
 
 static const size_t SMALL_BUFFER_SIZE = 15;
 static const size_t TINY_BUFFER_SIZE = 10;
+
+char getDirectionOfLat(double lat);
+char getDirectionOfLng(double lng);
+bool initSDCard();
 
 // GPS Status Struktur
 struct GPSState {
@@ -78,49 +81,6 @@ void setLed(bool state, uint8_t pin, bool TEST = true) {
     if (!TEST) return;
     pinMode(pin, OUTPUT);
     digitalWrite(pin, state);
-}
-
-bool initSDCard() {
-    Serial.println("initSDCard: Starting SD card initialization...");
-
-    // SPI Bus explizit konfigurieren
-    SPIClass spi = SPIClass(VSPI);
-    spi.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
-    Serial.println("initSDCard: SPI initialized");
-
-    // In setup() nach SPI.begin():
-    Serial.println("SPI Pins:");
-    Serial.printf("MISO: %d\n", SD_MISO);
-    Serial.printf("MOSI: %d\n", SD_MOSI);
-    Serial.printf("SCK:  %d\n", SD_SCLK);
-    Serial.printf("CS:   %d\n", SD_CS);
-
-    // SD-Karte mit mehreren Versuchen initialisieren
-    int retries = 3;
-    while (retries > 0) {
-        Serial.printf("initSDCard: Attempt %d of 3...\n", 4 - retries);
-        if (SD.begin(SD_CS, spi)) {
-            Serial.println("initSDCard: SD.begin() successful");
-            uint8_t cardType = SD.cardType();
-            Serial.printf("initSDCard: Card type: %d\n", cardType);
-            if (cardType != CARD_NONE) {
-                Serial.println("SD Card Mount erfolgreich");
-                Serial.printf("SD Card Typ: %d\n", cardType);
-                return true;
-            } else {
-                Serial.println("initSDCard: No card detected");
-            }
-        } else {
-            Serial.println("initSDCard: SD.begin() failed");
-        }
-        retries--;
-        if (retries > 0) {
-            Serial.printf("SD-Karten Initialisierung fehlgeschlagen, Versuch %d von 3...\n", 4 - retries);
-            delay(1000);
-        }
-    }
-    Serial.println("initSDCard: SD card initialization failed");
-    return false;
 }
 
 bool initGPS() {
@@ -185,9 +145,9 @@ String currentFileName;
 
 // Funktion zum Öffnen der SD-Karten-Datei
 bool openGPSFile() {
-    String fullPath = "/GPS/";
-    if (!SD.exists("/GPS")) {
-        if (!SD.mkdir("/GPS")) {
+    String fullPath = "/sdcard/GPS/";
+    if (!SD_MMC.exists("/sdcard/GPS")) {
+        if (!SD_MMC.mkdir("/sdcard/GPS")) {
             Serial.println("Fehler beim Erstellen des GPS-Verzeichnisses");
             return false;
         }
@@ -207,7 +167,7 @@ bool openGPSFile() {
     if (!gpsFile) {
         // SPI Transaktion starten
         SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
-        gpsFile = SD.open(currentFileName.c_str(), FILE_APPEND);
+        gpsFile = SD_MMC.open(currentFileName.c_str(), FILE_APPEND);
         if (!gpsFile) {
             Serial.println("Fehler beim Öffnen der Datei");
             SPI.endTransaction(); // SPI Transaktion beenden
@@ -296,8 +256,7 @@ void processPosition() {
     // Auf SD-Karte schreiben
     Serial.println("Writing to SD card...");
     if (openGPSFile()) {
-        // SPI Transaktion starten
-        SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
+
     
         // Interrupts deaktivieren
         noInterrupts();
@@ -311,7 +270,7 @@ void processPosition() {
         // Interrupts aktivieren
         interrupts();
         
-        SPI.endTransaction(); // SPI Transaktion beenden
+    
 
     }
 

@@ -39,7 +39,7 @@
  */
 
 #include <pins.h>
-#include <SD.h>
+#include "SD_MMC.h"
 #include "SD_card.h"
 #include <HardwareSerial.h>
 #include <TinyGPS++.h>
@@ -50,7 +50,7 @@ extern HardwareSerial gpsSerial; // Serial 2 verwenden
 // Funktion zum Schreiben in die Datei debug.txt
 void writeDebug(const String &message) {
   if (TEST) {
-      File file = SD.open("/debug.txt", FILE_APPEND);
+      File file = SD_MMC.open("/debug.txt", FILE_APPEND);
     if (file) {
       file.println(message);
       file.close();
@@ -288,34 +288,35 @@ void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus 
   file.close();
 }
 
-bool initializeSDCard() {
-  // Verzögerung hinzufügen, um der SD-Karte mehr Zeit zu geben
-  vTaskDelay(2000 / portTICK_PERIOD_MS);// 1 Sekunde Verzögerung
-  SPI.begin(SD_SCLK, SD_MISO, SD_MOSI);
-  // Initialisiere die SD-Karte
-  if (!SD.begin(SD_CS, SPI)) {
-    Serial.println("Card Mount Failed");
-    return false;
-  } else {
-    Serial.println("Card Mount Success");
-    uint8_t cardType = SD.cardType();
-    if (cardType == CARD_NONE) {
-      Serial.println("No SD card attached");
-      return false;
-    } else {
-      Serial.print("SD Card Type: ");
-      if (cardType == CARD_MMC) {
-        Serial.println("MMC");
-      } else if (cardType == CARD_SD) {
-        Serial.println("SDSC");
-      } else if (cardType == CARD_SDHC) {
-        Serial.println("SDHC");
-      } else if (cardType == CARD_UNKNOWN) {
-        Serial.println("UNKNOWN CARD");
-      }
-      return true;
+bool initSDCard() {
+    Serial.println("initSDCard: Starting SD card initialization...");
+
+    // SD_MMC initialisieren
+    if (!SD_MMC.begin("/sdcard/GPS", true)) {
+        Serial.println("initSDCard: SD Card Mount Failed");
+        return false;
     }
-  }
+
+    uint8_t cardType = SD_MMC.cardType();
+
+    if (cardType == CARD_NONE) {
+        Serial.println("initSDCard: No SD Card attached");
+        return false;
+    }
+
+    Serial.print("initSDCard: SD_MMC Card Type: ");
+    if (cardType == CARD_MMC) {
+        Serial.println("MMC");
+    } else if (cardType == CARD_SD) {
+        Serial.println("SDSC");
+    } else if (cardType == CARD_SDHC) {
+        Serial.println("SDHC");
+    } else {
+        Serial.println("UNKNOWN");
+    }
+
+    Serial.println("initSDCard: SD Card Mount erfolgreich");
+    return true;
 }
 
 bool writeDebugFile(fs::FS &fs, const char * message) {
