@@ -4,17 +4,17 @@
 #define SERIALMONITOR_BAUD 115200
 
 // #include<ArduinoTrace.h>
-#include <Wire.h>
+// #include <Wire.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include "esp_task_wdt.h"
-#include <WiFi.h>
+// #include <WiFi.h>
 #include "GNSS_module.h"
 #include "SD_card.h"
 #include <my_Helpers.h>
 #include <SD.h>
 #include <SPI.h>
-#include <I2Cdev.h>
+// #include <I2Cdev.h>
 #include "esp_log.h"
 #include <FS.h>
 #include <esp_now.h> // ESP-NOW Bibliothek
@@ -122,7 +122,7 @@ bool initializeMutexes() {
     return true;
 }
 
-bool takeMutex(MutexIndex index, TickType_t timeout = pdMS_TO_TICKS(100)) {
+bool takeMutex(MutexIndex index, TickType_t timeout = pdMS_TO_TICKS(5000)) {
     if(mutexes[index] == NULL) return false;
     return xSemaphoreTake(mutexes[index], timeout) == pdTRUE;
 }
@@ -145,9 +145,12 @@ void setLed(bool state, uint8_t pin, bool TEST = true) {
 }
 
 bool initSDCard() {
+    Serial.println("initSDCard: Starting SD card initialization...");
+
     // SPI Bus explizit konfigurieren
     SPIClass spi = SPIClass(VSPI);
     spi.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
+    Serial.println("initSDCard: SPI initialized");
 
     // In setup() nach SPI.begin():
     Serial.println("SPI Pins:");
@@ -159,13 +162,20 @@ bool initSDCard() {
     // SD-Karte mit mehreren Versuchen initialisieren
     int retries = 3;
     while (retries > 0) {
+        Serial.printf("initSDCard: Attempt %d of 3...\n", 4 - retries);
         if (SD.begin(SD_CS, spi)) {
+            Serial.println("initSDCard: SD.begin() successful");
             uint8_t cardType = SD.cardType();
+            Serial.printf("initSDCard: Card type: %d\n", cardType);
             if (cardType != CARD_NONE) {
                 Serial.println("SD Card Mount erfolgreich");
                 Serial.printf("SD Card Typ: %d\n", cardType);
                 return true;
+            } else {
+                Serial.println("initSDCard: No card detected");
             }
+        } else {
+            Serial.println("initSDCard: SD.begin() failed");
         }
         retries--;
         if (retries > 0) {
@@ -173,6 +183,7 @@ bool initSDCard() {
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
+    Serial.println("initSDCard: SD card initialization failed");
     return false;
 }
 
@@ -310,6 +321,26 @@ void writeBufferToSD() {
     }
 }
 
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    Serial.print("\r\nLast Packet Send Status:\t");
+    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+  }
+  
+  void sendDataViaESPNow(int rpmValue, double latitudeValue, double longitudeValue) {
+      // Daten für den Versand vorbereiten
+      myData.rpm = rpmValue;
+      myData.latitude = latitudeValue;
+      myData.longitude = longitudeValue;
+  
+      // Daten per ESP-NOW senden
+      esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+  
+      if (result != ESP_OK) {
+          Serial.print("Error sending the data");
+          Serial.println(esp_err_to_name(result));
+      }
+  }
+
 void processPosition() {
     // Statische Puffer statt dynamischer Speicherzuweisung
     static char lat[15];
@@ -400,28 +431,37 @@ void processPosition() {
 }
 
 void navigation(void * parameter) {
+    Serial.println("Navigation task started!"); // Hinzugefügte Meldung
     esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, true);
-    esp_task_wdt_add(NULL);
+    esp_task_wdt_add(NULL); 
 
     for(;;) {
+        Serial.println("Navigation loop..."); // Hinzugefügte Meldung
         String rawData = "";
 
         // GPS-Daten lesen
         if(takeMutex(SERIAL_MUTEX, pdMS_TO_TICKS(100))) {
-            while (gpsSerial.available() > 0 && rawData.length() < GPS_BUFFER_SIZE - 1) {
+            Serial.println("Taking SERIAL_MUTEX..."); // Hinzugefügte Meldung
+            // while (gpsSerial.available() > 0 && rawData.length() < GPS_BUFFER_SIZE - 1) {
+            while (gpsSerial.available() > 0) {
                 char c = gpsSerial.read();
                 rawData += c;
+                Serial.print(c); // Rohdaten ausgeben
                 gps.encode(c);
             }
             giveMutex(SERIAL_MUTEX);
+            Serial.println("Giving SERIAL_MUTEX..."); // Hinzugefügte Meldung
+        } else {
+            Serial.println("Failed to take SERIAL_MUTEX!"); // Hinzugefügte Meldung
         }
 
         // Wenn neue GPS-Position verfügbar
         if (gps.location.isUpdated()) {
+            Serial.println("GPS location is updated!"); // Hinzugefügte Meldung
             processPosition();  // GPS-Daten verarbeiten
 
             // Daten für den Versand vorbereiten (Beispielwerte, ersetzen Sie diese durch Ihre tatsächlichen Werte)
-            int rpmValue = 1234; // Beispielwert
+            int rpmValue = 1200; // Beispielwert
             double latitudeValue = gps.location.lat();
             double longitudeValue = gps.location.lng();
 
@@ -432,6 +472,8 @@ void navigation(void * parameter) {
             setLed(true, GREEN_LED_PIN, TEST);
             vTaskDelay(pdMS_TO_TICKS(150));
             setLed(false, GREEN_LED_PIN, TEST);
+        } else {
+            Serial.println("GPS location is NOT updated!"); // Hinzugefügte Meldung
         }
 
         // Watchdog zurücksetzen
@@ -446,6 +488,7 @@ void navigation(void * parameter) {
 
 void testSDCard() {
     Serial.println("testSDCard: Starte SD-Karten Test");
+    Serial.println("testSDCard: Versuche sdMutex zu nehmen");
     if(xSemaphoreTake(sdMutex, pdMS_TO_TICKS(15000))) {
         Serial.println("testSDCard: sdMutex genommen");
         String testFile = "/GPS/test.txt";
@@ -459,7 +502,8 @@ void testSDCard() {
             file.close();
             Serial.println("testSDCard: Datei erfolgreich geschrieben");
 
-            // Lese Test
+            // Lese Test auskommentiert
+            /*
             Serial.printf("testSDCard: Öffne Datei %s zum Lesen\n", testFile.c_str());
             file = SD.open(testFile.c_str());
             if(file) {
@@ -473,16 +517,18 @@ void testSDCard() {
             } else {
                 Serial.println("testSDCard: Fehler beim Öffnen der Test-Datei zum Lesen");
             }
+            */
         } else {
             Serial.println("testSDCard: Fehler beim Schreiben der Test-Datei");
         }
+        Serial.println("testSDCard: Versuche sdMutex freizugeben");
         xSemaphoreGive(sdMutex);
         Serial.println("testSDCard: sdMutex freigegeben");
     } else {
         Serial.println("testSDCard: sdMutex konnte nicht genommen werden");
     }
     Serial.println("testSDCard: SD-Karten Test abgeschlossen");
-}
+} 
 
 void setup() {
     Serial.begin(SERIALMONITOR_BAUD);
@@ -490,6 +536,7 @@ void setup() {
     Serial.println("Starting setup...");
 
     // Mutexe initialisieren
+    Serial.println("Initializing mutexes...");
     if (!initializeMutexes()) {
         Serial.println("FEHLER: Mutex-Initialisierung fehlgeschlagen");
         while(1) {
@@ -500,6 +547,7 @@ void setup() {
     Serial.println("Mutexe erfolgreich erstellt");
 
     // SD-Karte initialisieren
+    Serial.println("Initializing SD card...");
     bool sdCardInitialized = initSDCard();
     if (!sdCardInitialized) {
         Serial.println("SD-Karten-Initialisierung fehlgeschlagen. Das Programm wird ohne SD-Karten-Funktionalität fortgesetzt.");
@@ -507,40 +555,49 @@ void setup() {
         Serial.println("SD-Karte erfolgreich initialisiert");
         delay(100);
         // Testen der SD-Karte
-        testSDCard();
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        // testSDCard();
+        // vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
+    Serial.println("After SD card initialization...");
+
     // WLAN initialisieren
+    Serial.println("Initializing WiFi...");
     WiFi.mode(WIFI_STA);
 
     // ESP-NOW initialisieren
+    Serial.println("Initializing ESP-NOW...");
     if (esp_now_init() != ESP_OK) {
         Serial.println("Error initializing ESP-NOW");
         return;
     }
 
     // ESP-NOW Rolle festlegen
+    Serial.println("Setting ESP-NOW role...");
     esp_now_register_send_cb(OnDataSent);
 
     // Peer-Informationen definieren
+    Serial.println("Defining peer info...");
     memcpy(peerInfo.peer_addr, broadcastAddress, 6);
     peerInfo.channel = 0;  
     peerInfo.encrypt = false;
 
     // Peer registrieren
+    Serial.println("Adding peer...");
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
         Serial.println("Failed to add peer");
         return;
     }
-
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    
     // Tasks mit angepassten Prioritäten erstellen
+    Serial.println("Creating navigation task...");
     BaseType_t result = xTaskCreatePinnedToCore(
         navigation,
         "Navigation",
         16384,  // Stack-Größe erhöht
         NULL,
-        2,  // Mittlere Priorität
+        0,  // Mittlere Priorität
         NULL,
         1
     );
@@ -551,29 +608,13 @@ void setup() {
     }
 
     // Watchdog konfigurieren
+    Serial.println("Configuring watchdog...");
     esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, false);  // Watchdog nicht tödlich
+    Serial.println("Setup finished!");
+
+    vTaskDelay(pdMS_TO_TICKS(5000));
 }
 
 void loop() {
   // Nichts zu tun
-}
-
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.print("\r\nLast Packet Send Status:\t");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-}
-
-void sendDataViaESPNow(int rpmValue, double latitudeValue, double longitudeValue) {
-    // Daten für den Versand vorbereiten
-    myData.rpm = rpmValue;
-    myData.latitude = latitudeValue;
-    myData.longitude = longitudeValue;
-
-    // Daten per ESP-NOW senden
-    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
-
-    if (result != ESP_OK) {
-        Serial.print("Error sending the data");
-        Serial.println(esp_err_to_name(result));
-    }
 }
