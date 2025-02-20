@@ -4,19 +4,10 @@
 #include <HardwareSerial.h>
 #include <TinyGPS++.h>
 #include <WiFi.h>
-#include <esp_wifi.h>
 #include <FS.h>
 
 // GPS Serial Interface
 extern HardwareSerial gpsSerial;
-
-// Sleep-Zeit Konstanten (in Sekunden)
-extern const unsigned long deepSleepTime;  
-extern const unsigned long lightSleepTime;
-
-// RTC Variablen für den persistenten Speicher
-extern RTC_DATA_ATTR bool isMissionModeRTC;
-extern RTC_DATA_ATTR bool isWakedUpRTC;
 
 /**
  * @brief Generiert einen Dateinamen basierend auf GPS-Daten
@@ -62,18 +53,6 @@ double calculateDifference(double firstData, double secondData);
  * @brief Schreibt Erstellungs- und Änderungsdatum in Datei
  */
 void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus &gps);
-
-/**
- * @brief Speichert GPS-Daten im RTC Memory
- */
-void saveToRTC(const String &gpstimeLast, const String &dateLast, 
-               const String &latLast, const String &lonLast, bool isMissionMode);
-
-/**
- * @brief Lädt GPS-Daten aus dem RTC Memory
- */
-void loadFromRTC(String &gpstimeLast, String &dateLast,
-                String &latLast, String &lonLast, bool &isMissionMode);
 
 /**
  * @brief Debug Ausgabe Funktionen

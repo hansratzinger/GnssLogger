@@ -4,8 +4,7 @@
 #include <map>
 #include "my_Helpers.h"
 #include "pins.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
+
 
 // Vorwärtsdeklarationen der Task-Funktionen
 void setLed(bool state, uint8_t ledPin, bool TEST);
@@ -59,21 +58,21 @@ void blinkMorseCode(const String &text, uint8_t ledPin, int repeatCount, bool TE
         for (char m : code) {
           if (m == '.') {
             setLed(true, ledPin, true);   // Grüne LED ein
-            vTaskDelay(pdMS_TO_TICKS(200));      // 500ms warten
+            delay(200);      // 500ms warten
             setLed(false, ledPin, true);  // Grüne LED aus
-            vTaskDelay(pdMS_TO_TICKS(200));      // 500ms warten
+            delay(200);      // 500ms warten
           } else if (m == '-') {
             setLed(true, ledPin, true);   // Grüne LED ein
-            vTaskDelay(pdMS_TO_TICKS(500));      // 500ms warten
+            delay(500);      // 500ms warten
             setLed(false, ledPin, true);  // Grüne LED aus
-            vTaskDelay(pdMS_TO_TICKS(500));      // 500ms warten
+            delay(500);      // 500ms warten
           }
-          vTaskDelay(pdMS_TO_TICKS(200));      // 500ms warten
+          delay(200);      // 500ms warten
         }
-        vTaskDelay(pdMS_TO_TICKS(500));      // 500ms warten
+        delay(500);      // 500ms warten
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(1000));      // 500ms warten
+    delay(1000);      // 500ms warten
   }
 }
 

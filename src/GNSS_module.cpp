@@ -2,10 +2,9 @@
 #include "SD.h"
 #include "SPI.h"
 #include <TinyGPS++.h>
-#include <EEPROM.h>
 #include "GNSS_module.h"
 #include <WiFi.h>
-#include <esp_wifi.h>
+
 
 const bool TEST = true;
 
@@ -49,9 +48,7 @@ void writeGNSSDataToSD(File* file, TinyGPSPlus* gps, double distance) {
              distance);
              
     file->print(buffer);
-    file->flush();
 }
-
 
 unsigned long getTimeDifference(const char* gpstime, const char* gpstimeLast) {
     if (!gpstime || !gpstimeLast) {

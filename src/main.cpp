@@ -3,51 +3,20 @@
 #define GPS_BAUD 115200
 #define SERIALMONITOR_BAUD 115200
 
-// #include<ArduinoTrace.h>
-// #include <Wire.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include "esp_task_wdt.h"
-// #include <WiFi.h>
 #include "GNSS_module.h"
 #include "SD_card.h"
 #include <my_Helpers.h>
 #include <SD.h>
 #include <SPI.h>
-// #include <I2Cdev.h>
-#include "esp_log.h"
 #include <FS.h>
 #include <esp_now.h> // ESP-NOW Bibliothek
 #include <WiFi.h>    // WiFi Bibliothek
+#include <TinyGPSPlus.h>
 
 #define DEBUG_SD 1  // Debug-Ausgaben aktivieren
-#define MUTEX_TIMEOUT_MS 1000  // 1 Sekunde Timeout für Mutex-Operationen
 
-// Globale Variablen für Mutexe
-SemaphoreHandle_t watchdogMutex = NULL;
-SemaphoreHandle_t serialMutex = NULL;
-SemaphoreHandle_t ledMutex = NULL;
-// Globaler Mutex für SD-Karten Zugriffe
-SemaphoreHandle_t sdMutex = NULL;
-static constexpr uint32_t WDT_TIMEOUT_MS = 30000;  // 30 Sekunden Watchdog
-static SemaphoreHandle_t mutexes[4] = {NULL, NULL, NULL, NULL};
-enum MutexIndex { WATCHDOG_MUTEX = 0, SERIAL_MUTEX = 1, LED_MUTEX = 2, SD_MUTEX = 3 };
-
-// Task Handles
-xTaskHandle navigationTask = NULL;
-
-// Vorwärtsdeklarationen der Task-Funktionen
-void navigation(void * parameter);
-void writeBufferToSD();
-void setLed(bool state, uint8_t ledPin, bool TEST) ;
-
-const String BRANCH="esp-now"; // Branch name
-const String RELEASE="2.2.0"; // Branch name
-
-// Buffer für SD-Karten Schreibzugriffe
-static const int BUFFER_SIZE = 4096;
-char buffer[BUFFER_SIZE];
-int bufferIndex = 0;
+// const String BRANCH = "esp-now"; // Branch name
+// const String RELEASE = "2.2.0"; // Branch name
 
 // Deklaration von Variablen
 unsigned long lastSwitchTime = 0, timeDifference = 0;
@@ -65,12 +34,6 @@ unsigned long currentTime = 0;
 extern const char* CSV_HEADER;
 const char* firstline = CSV_HEADER;  // Verwende CSV_HEADER als firstline
 
-// Konstanten für Task-Konfiguration
-static const uint32_t NAVIGATION_STACK_SIZE = 16384;
-
-static const uint32_t TASK_DELAY_MS = 100;
-static const size_t GPS_BUFFER_SIZE = 256;  // Vergrößert und aligned
-alignas(4) static char gpsBuffer[GPS_BUFFER_SIZE];  // Aligned Buffer
 static const size_t SMALL_BUFFER_SIZE = 15;
 static const size_t TINY_BUFFER_SIZE = 10;
 
@@ -110,38 +73,11 @@ uint8_t broadcastAddress[] = {0x34, 0x98, 0x7A, 0x86, 0xF5, 0xCC}; // Hier die M
 // ESP-NOW Status
 esp_now_peer_info_t peerInfo;
 
-// Mutex Helper Funktionen
-bool initializeMutexes() {
-    for(int i = 0; i < 4; i++) {
-        mutexes[i] = xSemaphoreCreateMutex();
-        if(!mutexes[i]) {
-            Serial.printf("Fehler bei Mutex %d Initialisierung\n", i);
-            return false;
-        }
-    }
-    return true;
-}
-
-bool takeMutex(MutexIndex index, TickType_t timeout = pdMS_TO_TICKS(5000)) {
-    if(mutexes[index] == NULL) return false;
-    return xSemaphoreTake(mutexes[index], timeout) == pdTRUE;
-}
-
-void giveMutex(MutexIndex index) {
-    if(mutexes[index] != NULL) {
-        xSemaphoreGive(mutexes[index]);
-    }
-}
-
 // LED Funktion vereinfacht
 void setLed(bool state, uint8_t pin, bool TEST = true) {
     if (!TEST) return;
-
-    if (takeMutex(LED_MUTEX, pdMS_TO_TICKS(100))) {
-        pinMode(pin, OUTPUT);
-        digitalWrite(pin, state);
-        giveMutex(LED_MUTEX);
-    }
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, state);
 }
 
 bool initSDCard() {
@@ -179,8 +115,8 @@ bool initSDCard() {
         }
         retries--;
         if (retries > 0) {
-            Serial.printf("SD-Karten Initialisierung fehlgeschlagen, Versuch %d von 3...\n", 4-retries);
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            Serial.printf("SD-Karten Initialisierung fehlgeschlagen, Versuch %d von 3...\n", 4 - retries);
+            delay(1000);
         }
     }
     Serial.println("initSDCard: SD card initialization failed");
@@ -196,150 +132,102 @@ bool initGPS() {
     while (gpsRetries > 0) {
         if (gpsSerial) {
             // Puffer leeren
-            while(gpsSerial.available()) {
+            while (gpsSerial.available()) {
                 gpsSerial.read();
             }
 
             // Warte auf erste gültige NMEA-Daten
             unsigned long startTime = millis();
-            while(millis() - startTime < 2000) {  // 2 Sekunden Timeout
-                if(gpsSerial.available()) {
+            while (millis() - startTime < 2000) {  // 2 Sekunden Timeout
+                if (gpsSerial.available()) {
                     char c = gpsSerial.read();
-                    if(gps.encode(c) && gps.location.isValid()) {
+                    if (gps.encode(c) && gps.location.isValid()) {
                         Serial.println("GPS data stream verified");
                         return true;
                     }
                 }
-                vTaskDelay(pdMS_TO_TICKS(10));
+                delay(10);
             }
         }
 
-        Serial.printf("Waiting for GPS Serial, attempt %d of 5...\n", 6-gpsRetries);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        Serial.printf("Waiting for GPS Serial, attempt %d of 5...\n", 6 - gpsRetries);
+        delay(1000);
         gpsRetries--;
     }
 
     return false;
 }
 
-void bufferData(const char* data) {
-    size_t len = strlen(data);
-    if(bufferIndex + len >= BUFFER_SIZE) {
-        // Buffer ist voll - erst schreiben
-        writeBufferToSD();
-    }
-
-    // Sicheres Kopieren
-    memcpy(buffer + bufferIndex, data, len);
-    bufferIndex += len;
-}
-
-// Modifizierte writeBufferToSD Funktion:
-void writeBufferToSD() {
-    if (bufferIndex == 0) {
-#if DEBUG_SD
-        if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-            Serial.println("DEBUG: Nichts zu schreiben (Buffer leer)");
-            xSemaphoreGive(serialMutex);
-        }
-#endif
-        return;
-    }
-
-    if(xSemaphoreTake(sdMutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS))) {
-#if DEBUG_SD
-        if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-            Serial.printf("DEBUG: Versuche %d Bytes zu schreiben\n", bufferIndex);
-            xSemaphoreGive(serialMutex);
-        }
-#endif
-
-        String fullPath = "/GPS/";
-
-        if(!SD.exists("/GPS")) {
-#if DEBUG_SD
-            if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-                Serial.println("DEBUG: Erstelle GPS-Verzeichnis");
-                xSemaphoreGive(serialMutex);
-            }
-#endif
-
-            if(!SD.mkdir("/GPS")) {
-#if DEBUG_SD
-                if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-                    Serial.println("DEBUG: Fehler beim Erstellen des GPS-Verzeichnisses");
-                    xSemaphoreGive(serialMutex);
-                }
-#endif
-                xSemaphoreGive(sdMutex);
-                return;
-            }
-        }
-
-        fullPath += generateFileName(gps);
-
-#if DEBUG_SD
-        if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-            Serial.printf("DEBUG: Öffne Datei: %s\n", fullPath.c_str());
-            xSemaphoreGive(serialMutex);
-        }
-#endif
-
-        File file = SD.open(fullPath.c_str(), FILE_APPEND);
-        if(!file) {
-#if DEBUG_SD
-            if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-                Serial.println("DEBUG: Fehler beim Öffnen der Datei");
-                xSemaphoreGive(serialMutex);
-            }
-#endif
-            xSemaphoreGive(sdMutex);
-            return;
-        }
-
-        size_t bytesWritten = file.write((uint8_t*)buffer, bufferIndex);
-
-#if DEBUG_SD
-        if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-            Serial.printf("DEBUG: Buffer Status - Geschrieben: %d von %d Bytes\n",
-                        bytesWritten, bufferIndex);
-            Serial.printf("DEBUG: Erste 32 Bytes: ");
-            for(int i = 0; i < min(32, bufferIndex); i++) {
-                Serial.printf("%c", buffer[i]);
-            }
-            Serial.println();
-            xSemaphoreGive(serialMutex);
-        }
-#endif
-
-        file.flush();
-        file.close();
-        xSemaphoreGive(sdMutex);
-
-        // Buffer zurücksetzen
-        bufferIndex = 0;
-    }
-}
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     Serial.print("\r\nLast Packet Send Status:\t");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-  }
-  
-  void sendDataViaESPNow(int rpmValue, double latitudeValue, double longitudeValue) {
-      // Daten für den Versand vorbereiten
-      myData.rpm = rpmValue;
-      myData.latitude = latitudeValue;
-      myData.longitude = longitudeValue;
-  
-      // Daten per ESP-NOW senden
-      esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
-  
-      if (result != ESP_OK) {
-          Serial.print("Error sending the data");
-          Serial.println(esp_err_to_name(result));
-      }
-  }
+}
+
+void sendDataViaESPNow(int rpmValue, double latitudeValue, double longitudeValue) {
+    // Daten für den Versand vorbereiten
+    myData.rpm = rpmValue;
+    myData.latitude = latitudeValue;
+    myData.longitude = longitudeValue;
+
+    // Daten per ESP-NOW senden
+    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)&myData, sizeof(myData));
+
+    if (result != ESP_OK) {
+        Serial.print("Error sending the data");
+        Serial.println(esp_err_to_name(result));
+    }
+}
+
+// Globale Variable für die SD-Karten-Datei
+File gpsFile;
+String currentFileName;
+
+// Funktion zum Öffnen der SD-Karten-Datei
+bool openGPSFile() {
+    String fullPath = "/GPS/";
+    if (!SD.exists("/GPS")) {
+        if (!SD.mkdir("/GPS")) {
+            Serial.println("Fehler beim Erstellen des GPS-Verzeichnisses");
+            return false;
+        }
+    }
+    fullPath += generateFileName(gps);
+
+    // Überprüfen, ob sich der Dateiname geändert hat
+    if (fullPath != currentFileName) {
+        // Wenn sich der Dateiname geändert hat, die alte Datei schließen
+        if (gpsFile) {
+            gpsFile.close();
+        }
+        currentFileName = fullPath;
+    }
+
+    // Wenn die Datei noch nicht geöffnet ist, öffnen Sie sie jetzt
+    if (!gpsFile) {
+        // SPI Transaktion starten
+        SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
+        gpsFile = SD.open(currentFileName.c_str(), FILE_APPEND);
+        if (!gpsFile) {
+            Serial.println("Fehler beim Öffnen der Datei");
+            SPI.endTransaction(); // SPI Transaktion beenden
+            return false;
+        }
+        SPI.endTransaction(); // SPI Transaktion beenden
+    }
+    return true;
+}
+
+// Funktion zum sicheren Konvertieren von String nach Double
+double safeStrtod(const char* str, double defaultValue) {
+    char* endPtr;
+    double result = strtod(str, &endPtr);
+    if (*endPtr != '\0') {
+        Serial.println("Konvertierungsfehler: Ungültige Eingabe");
+        return defaultValue;
+    }
+    return result;
+}
 
 void processPosition() {
     // Statische Puffer statt dynamischer Speicherzuweisung
@@ -354,11 +242,6 @@ void processPosition() {
     static char speed[10];
     static char altitude[10];
     static char logging[130];
-
-    if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-        Serial.println("Processing position data...");
-        xSemaphoreGive(serialMutex);
-    }
 
     // GPS-Daten formatieren
     snprintf(lat, sizeof(lat), "%.6f", gps.location.lat());
@@ -388,10 +271,11 @@ void processPosition() {
         speed, altitude, hdop, satellites);
 
     // Distanzberechnungen
-    double currentLat = atof(lat);
-    double currentLon = atof(lon);
-    double lastLat = atof(latLast);
-    double lastLon = atof(lonLast);
+    double currentLat = safeStrtod(lat, 0.0);
+    double currentLon = safeStrtod(lon, 0.0);
+    double lastLat = safeStrtod(latLast, 0.0);
+    double lastLon = safeStrtod(lonLast, 0.0);
+    
 
     latDifference = calculateDifference(currentLat, lastLat);
     lonDifference = calculateDifference(currentLon, lastLon);
@@ -401,6 +285,7 @@ void processPosition() {
     snprintf(logging + strlen(logging), sizeof(logging) - strlen(logging),
         ";%.6f;%.6f;%.6f", latDifference, lonDifference, positionDifference);
 
+    
     // Dezimalpunkte durch Kommas ersetzen
     for (size_t i = 0; i < strlen(logging); i++) {
         if (logging[i] == '.') {
@@ -408,15 +293,27 @@ void processPosition() {
         }
     }
 
-    // Nach dem Zusammenbau des logging-Strings
-    if(xSemaphoreTake(serialMutex, pdMS_TO_TICKS(100))) {
-        Serial.println("Logging string built: " + String(logging));
-        xSemaphoreGive(serialMutex);
-    }
+    // Auf SD-Karte schreiben
+    Serial.println("Writing to SD card...");
+    if (openGPSFile()) {
+        // SPI Transaktion starten
+        SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
+    
+        // Interrupts deaktivieren
+        noInterrupts();
+    
+        if (openGPSFile()) {
+            gpsFile.println(logging);
+        } else {
+            Serial.println("Fehler beim Schreiben in die Datei");
+        }
+        
+        // Interrupts aktivieren
+        interrupts();
+        
+        SPI.endTransaction(); // SPI Transaktion beenden
 
-    char tempBuffer[132];  // 130 (logging size) + 1 (\n) + 1 (\0)
-    snprintf(tempBuffer, sizeof(tempBuffer), "%s\n", logging);
-    bufferData(tempBuffer);
+    }
 
     // Aktuelle Position als letzte Position speichern
     snprintf(gpstimeLast, sizeof(gpstimeLast), "%s", gpstime);
@@ -428,129 +325,14 @@ void processPosition() {
     snprintf(hdopLast, sizeof(hdopLast), "%s", hdop);
     snprintf(satellitesLast, sizeof(satellitesLast), "%s", satellites);
     snprintf(loggingLast, sizeof(loggingLast), "%s", logging);
+
+    Serial.println("processPosition() finished");
 }
-
-void navigation(void * parameter) {
-    Serial.println("Navigation task started!"); // Hinzugefügte Meldung
-    esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, true);
-    esp_task_wdt_add(NULL);
-
-    for(;;) {
-        Serial.println("Navigation loop..."); // Hinzugefügte Meldung
-        String rawData = "";
-
-        // GPS-Daten lesen
-        if(takeMutex(SERIAL_MUTEX, pdMS_TO_TICKS(100))) {
-            Serial.println("Taking SERIAL_MUTEX..."); // Hinzugefügte Meldung
-            while (gpsSerial.available() > 0) {
-                char c = gpsSerial.read();
-                rawData += c;
-                Serial.print(c); // Rohdaten ausgeben
-                gps.encode(c);
-            }
-            giveMutex(SERIAL_MUTEX);
-            Serial.println("Giving SERIAL_MUTEX..."); // Hinzugefügte Meldung
-        } else {
-            Serial.println("Failed to take SERIAL_MUTEX!"); // Hinzugefügte Meldung
-        }
-
-        // Wenn neue GPS-Position verfügbar
-        if (gps.location.isUpdated()) {
-            Serial.println("GPS location is updated!"); // Hinzugefügte Meldung
-            processPosition();  // GPS-Daten verarbeiten
-
-            // Daten für den Versand vorbereiten (Beispielwerte, ersetzen Sie diese durch Ihre tatsächlichen Werte)
-            int rpmValue = 1200; // Beispielwert
-            double latitudeValue = gps.location.lat();
-            double longitudeValue = gps.location.lng();
-
-            // Daten per ESP-NOW senden
-            sendDataViaESPNow(rpmValue, latitudeValue, longitudeValue);
-
-            // LED-Feedback für neue Position
-            setLed(true, GREEN_LED_PIN, TEST);
-            vTaskDelay(pdMS_TO_TICKS(150));
-            setLed(false, GREEN_LED_PIN, TEST);
-        } else {
-            Serial.println("GPS location is NOT updated!"); // Hinzugefügte Meldung
-            Serial.print("gps.location.isUpdated(): "); Serial.println(gps.location.isUpdated());
-            Serial.print("gps.date.year() != 2000: "); Serial.println(gps.date.year() != 2000);
-            Serial.print("gps.date.month() != 0: "); Serial.println(gps.date.month() != 0);
-            Serial.print("gps.date.day() != 0: "); Serial.println(gps.date.day() != 0);
-            Serial.print("gps.time.hour() != 0: "); Serial.println(gps.time.hour() != 0);
-            Serial.print("gps.time.minute() != 0: "); Serial.println(gps.time.minute() != 0);
-            Serial.print("gps.time.second() != 0: "); Serial.println(gps.time.second() != 0);
-        }
-
-        // Watchdog zurücksetzen
-        if(takeMutex(WATCHDOG_MUTEX, pdMS_TO_TICKS(100))) {
-            esp_task_wdt_reset();
-            giveMutex(WATCHDOG_MUTEX);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
-}
-
-void testSDCard() {
-    Serial.println("testSDCard: Starte SD-Karten Test");
-    Serial.println("testSDCard: Versuche sdMutex zu nehmen");
-    if(xSemaphoreTake(sdMutex, pdMS_TO_TICKS(15000))) {
-        Serial.println("testSDCard: sdMutex genommen");
-        String testFile = "/GPS/test.txt";
-        Serial.printf("testSDCard: Öffne Datei %s zum Schreiben\n", testFile.c_str());
-        File file = SD.open(testFile.c_str(), FILE_WRITE);
-        if(file) {
-            Serial.println("testSDCard: Datei geöffnet");
-            Serial.println("testSDCard: Schreibe Daten in die Datei");
-            file.println("SD Test " + String(millis()));
-            Serial.println("testSDCard: Schliesse Datei");
-            file.close();
-            Serial.println("testSDCard: Datei erfolgreich geschrieben");
-
-            // Lese Test auskommentiert
-            /*
-            Serial.printf("testSDCard: Öffne Datei %s zum Lesen\n", testFile.c_str());
-            file = SD.open(testFile.c_str());
-            if(file) {
-                Serial.println("testSDCard: Datei zum Lesen geöffnet");
-                Serial.println("testSDCard: Dateiinhalt:");
-                while(file.available()) {
-                    Serial.write(file.read());
-                }
-                Serial.println("testSDCard: Schliesse Datei");
-                file.close();
-            } else {
-                Serial.println("testSDCard: Fehler beim Öffnen der Test-Datei zum Lesen");
-            }
-            */
-        } else {
-            Serial.println("testSDCard: Fehler beim Schreiben der Test-Datei");
-        }
-        Serial.println("testSDCard: Versuche sdMutex freizugeben");
-        xSemaphoreGive(sdMutex);
-        Serial.println("testSDCard: sdMutex freigegeben");
-    } else {
-        Serial.println("testSDCard: sdMutex konnte nicht genommen werden");
-    }
-    Serial.println("testSDCard: SD-Karten Test abgeschlossen");
-} 
 
 void setup() {
     Serial.begin(SERIALMONITOR_BAUD);
     delay(1000);
     Serial.println("Starting setup...");
-
-    // Mutexe initialisieren
-    Serial.println("Initializing mutexes...");
-    if (!initializeMutexes()) {
-        Serial.println("FEHLER: Mutex-Initialisierung fehlgeschlagen");
-        while(1) {
-            digitalWrite(RED_LED_PIN, !digitalRead(RED_LED_PIN));
-            delay(100);
-        }
-    }
-    Serial.println("Mutexe erfolgreich erstellt");
 
     // SD-Karte initialisieren
     Serial.println("Initializing SD card...");
@@ -560,12 +342,19 @@ void setup() {
     } else {
         Serial.println("SD-Karte erfolgreich initialisiert");
         delay(100);
-        // Testen der SD-Karte
-        // testSDCard();
-        // vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
     Serial.println("After SD card initialization...");
+
+    // GPS initialisieren
+    Serial.println("Initializing GPS...");
+    bool gpsInitialized = initGPS();
+    if (!gpsInitialized) {
+        Serial.println("GPS-Initialisierung fehlgeschlagen. Das Programm wird ohne GPS-Funktionalität fortgesetzt.");
+    } else {
+        Serial.println("GPS erfolgreich initialisiert");
+        delay(100);
+    }
 
     // WLAN initialisieren
     Serial.println("Initializing WiFi...");
@@ -585,7 +374,7 @@ void setup() {
     // Peer-Informationen definieren
     Serial.println("Defining peer info...");
     memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-    peerInfo.channel = 0;  
+    peerInfo.channel = 0;
     peerInfo.encrypt = false;
 
     // Peer registrieren
@@ -594,33 +383,62 @@ void setup() {
         Serial.println("Failed to add peer");
         return;
     }
-    vTaskDelay(pdMS_TO_TICKS(5000));
-    
-    // Tasks mit angepassten Prioritäten erstellen
-    Serial.println("Creating navigation task...");
-    BaseType_t result = xTaskCreatePinnedToCore(
-        navigation,
-        "Navigation",
-        16384,  // Stack-Größe erhöht
-        NULL,
-        0,  // Mittlere Priorität
-        NULL,
-        1
-    );
+    delay(5000);
 
-    if (result != pdPASS) {
-        Serial.println("Navigation Task Erstellung fehlgeschlagen");
-        while(1) delay(1000);
-    }
-
-    // Watchdog konfigurieren
-    Serial.println("Configuring watchdog...");
-    esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, false);  // Watchdog nicht tödlich
     Serial.println("Setup finished!");
-
-    vTaskDelay(pdMS_TO_TICKS(5000));
+    delay(5000);
 }
 
 void loop() {
-  // Nichts zu tun
+    currentTime = millis();
+    static unsigned long lastPositionTime = 0;
+    static const unsigned long switchTime = 250; // Wartezeit von mindestens 0,25 Sekunde
+
+    while (gpsSerial.available() > 0) {
+        gps.encode(gpsSerial.read());
+    }
+
+    if (gps.location.isValid()) {
+        Serial.print(F("Latitude: "));
+        Serial.println(gps.location.lat(), 6);
+        Serial.print(F("Longitude: "));
+        Serial.println(gps.location.lng(), 6);
+        Serial.print(F("Altitude: "));
+        Serial.println(gps.altitude.meters());
+        Serial.print(F("Speed: "));
+        Serial.println(gps.speed.kmph());
+        Serial.print(F("Heading: "));
+        Serial.println(gps.course.deg());
+        Serial.print(F("Date: "));
+        Serial.print(gps.date.day());
+        Serial.print(F("/"));
+        Serial.print(gps.date.month());
+        Serial.print(F("/"));
+        Serial.println(gps.date.year());
+        Serial.print(F("Time: "));
+        Serial.print(gps.time.hour());
+        Serial.print(F(":"));
+        Serial.print(gps.time.minute());
+        Serial.print(F(":"));
+        Serial.println(gps.time.second());
+        Serial.println();
+    }
+
+    if (currentTime - lastPositionTime >= switchTime) { // Wartezeit von mindestens 0,25 Sekunde
+        lastPositionTime = currentTime;
+        if ((gps.location.isValid()) && (gps.hdop.hdop() < 3.0) && (gps.date.year()) != 2000 && (gps.date.month()) != 0 && (gps.date.day()) != 0 && (gps.time.hour()) != 0 && (gps.time.minute()) != 0 && (gps.time.second()) != 0) {
+            // Überprüfung ob die Position aktualisiert wurde und der HDOP-Wert unter dem Schwellenwert liegt
+            // Aufrufen der Funktion zur Verarbeitung und Speicherung der Positionsdaten
+            processPosition();
+            int rpmValue = 1200; // Beispielwert
+            double latitudeValue = gps.location.lat();
+            double longitudeValue = gps.location.lng();
+
+            // Daten per ESP-NOW senden
+            sendDataViaESPNow(rpmValue, latitudeValue, longitudeValue);
+            setLed(true, GREEN_LED_PIN, TEST);
+            delay(150);
+            setLed(false, GREEN_LED_PIN, TEST);
+        }
+    }
 }

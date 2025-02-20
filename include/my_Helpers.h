@@ -2,8 +2,6 @@
 #define MY_HELPERS_H
 
 #include <Arduino.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 
 // LED Funktionen
 void ledON(int ledPin, bool TEST);
