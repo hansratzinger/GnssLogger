@@ -433,7 +433,7 @@ void processPosition() {
 void navigation(void * parameter) {
     Serial.println("Navigation task started!"); // Hinzugefügte Meldung
     esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, true);
-    esp_task_wdt_add(NULL); 
+    esp_task_wdt_add(NULL);
 
     for(;;) {
         Serial.println("Navigation loop..."); // Hinzugefügte Meldung
@@ -442,7 +442,6 @@ void navigation(void * parameter) {
         // GPS-Daten lesen
         if(takeMutex(SERIAL_MUTEX, pdMS_TO_TICKS(100))) {
             Serial.println("Taking SERIAL_MUTEX..."); // Hinzugefügte Meldung
-            // while (gpsSerial.available() > 0 && rawData.length() < GPS_BUFFER_SIZE - 1) {
             while (gpsSerial.available() > 0) {
                 char c = gpsSerial.read();
                 rawData += c;
@@ -474,6 +473,13 @@ void navigation(void * parameter) {
             setLed(false, GREEN_LED_PIN, TEST);
         } else {
             Serial.println("GPS location is NOT updated!"); // Hinzugefügte Meldung
+            Serial.print("gps.location.isUpdated(): "); Serial.println(gps.location.isUpdated());
+            Serial.print("gps.date.year() != 2000: "); Serial.println(gps.date.year() != 2000);
+            Serial.print("gps.date.month() != 0: "); Serial.println(gps.date.month() != 0);
+            Serial.print("gps.date.day() != 0: "); Serial.println(gps.date.day() != 0);
+            Serial.print("gps.time.hour() != 0: "); Serial.println(gps.time.hour() != 0);
+            Serial.print("gps.time.minute() != 0: "); Serial.println(gps.time.minute() != 0);
+            Serial.print("gps.time.second() != 0: "); Serial.println(gps.time.second() != 0);
         }
 
         // Watchdog zurücksetzen
