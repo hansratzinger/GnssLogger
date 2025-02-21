@@ -1,8 +1,9 @@
-#pragma once// filepath: /c:/esp32/GnssLogger/src/SD_card.h
+#ifndef SD_CARD_H   // Wenn die Header-Datei noch nicht eingebunden wurde
+#define SD_CARD_H   // Makrodefinition zur Vermeidung der Mehrfacheinbindung
 #include <pins.h>
 #include "SD_MMC.h"
 #include <FS.h>
-#include <TinyGPS++.h>
+#include <TinyGPSPlus.h>
 
 extern const bool TEST; // Deklaration der Konstante TEST
 
@@ -26,5 +27,4 @@ bool initSDCard();
 void debugPrint(const String &message);
 void debugPrintln(const String &message);
 
-char getDirectionOfLat(double latitude);
-char getDirectionOfLng(double longitude);
+#endif // SD_CARD_H

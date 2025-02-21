@@ -68,4 +68,7 @@ void debugPrintln(const String &message);
  */
 unsigned long getTimeDifference(const char* gpstime, const char* gpstimeLast);
 
+char getDirectionOfLat(double latitude);
+char getDirectionOfLng(double longitude);
+
 #endif // GNSS_MODULE_H

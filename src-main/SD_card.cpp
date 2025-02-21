@@ -255,15 +255,6 @@ void testFileIO(fs::FS &fs, const char *path) {
   file.close();
 }
 
-// filepath: /c:/esp32/GnssLogger/src/SD_card.cpp
-char getDirectionOfLat(double latitude) {
-  return (latitude >= 0) ? 'N' : 'S';
-}
-
-char getDirectionOfLng(double longitude) {
-  return (longitude >= 0) ? 'E' : 'W';
-}
-
 String convertToDMM(double decimalDegrees) {
   int degrees = (int)decimalDegrees;
   double minutes = (decimalDegrees - degrees) * 60;
@@ -292,7 +283,7 @@ bool initSDCard() {
     Serial.println("initSDCard: Starting SD card initialization...");
 
     // SD_MMC initialisieren
-    if (!SD_MMC.begin("/sdcard/GPS", true)) {
+    if (!SD_MMC.begin("/sdcard/GPS/", true)) {
         Serial.println("initSDCard: SD Card Mount Failed");
         return false;
     }

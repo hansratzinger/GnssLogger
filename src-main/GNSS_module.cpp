@@ -85,3 +85,14 @@ unsigned long getTimeDifference(const char* gpstime, const char* gpstimeLast) {
 
     return abs((long)time1 - (long)time2);
 }
+
+
+// filepath: /c:/esp32/GnssLogger/src/SD_card.cpp
+char getDirectionOfLat(double latitude) {
+    return (latitude >= 0) ? 'N' : 'S';
+  }
+  
+  char getDirectionOfLng(double longitude) {
+    return (longitude >= 0) ? 'E' : 'W';
+  }
+  
