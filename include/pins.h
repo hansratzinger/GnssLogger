@@ -10,7 +10,7 @@
 #define SD_MISO     19    // SD Card: Master In Slave Out
 #define SD_MOSI     23    // SD Card: Master Out Slave In  
 #define SD_SCLK     18    // SD Card: Serial Clock
-
+#define SD_CS       5     // SD Card: Chip Select
 // LC76 GNSS Modul UART Schnittstelle
 #define GPS_RX      16    // ESP32 RX (Input) <- LC76 TX (Output)
 #define GPS_TX      17    // ESP32 TX (Output) -> LC76 RX (Input)
