@@ -81,6 +81,30 @@ uint8_t broadcastAddress[] = {0x34, 0x98, 0x7A, 0x86, 0xF5, 0xCC}; // Hier die M
 // ESP-NOW Status
 esp_now_peer_info_t peerInfo;
 
+
+volatile bool ledState = false; // Volatile, da es in einem Interrupt geändert wird
+volatile unsigned long buttonPressTime = 0; // Zeitpunkt des Tastendrucks
+volatile bool buttonPressed = false; // Zustand des Tasters
+
+// Interrupt Service Routine (ISR)
+void IRAM_ATTR buttonISR() {
+  static unsigned long lastInterruptTime = 0;
+  unsigned long interruptTime = millis();
+
+  // Entprellung: Ignoriere Interrupts, die zu schnell aufeinander folgen
+  if (interruptTime - lastInterruptTime > 50) { // 50ms Entprellung
+    if (digitalRead(BUTTON_PIN) == LOW) { // Nur bei fallender Flanke
+      if (!buttonPressed) {
+        buttonPressed = true;
+        buttonPressTime = interruptTime;
+      }
+    } else {
+      buttonPressed = false;
+    }
+    lastInterruptTime = interruptTime;
+  }
+}
+
 // LED Funktion vereinfacht
 void setLed(bool state, uint8_t pin, bool TEST = true) {
     if (!TEST) return;
@@ -258,8 +282,8 @@ void processPosition() {
     Serial.println("Writing to SD card...");
     if (openGPSFile()) {
     
-        // Interrupts deaktivieren
-        noInterrupts();
+        // // Interrupts deaktivieren
+        // noInterrupts();
     
         if (openGPSFile()) {
             gpsFile.println(logging);
@@ -267,8 +291,8 @@ void processPosition() {
             Serial.println("Fehler beim Schreiben in die Datei");
         }
         
-        // Interrupts aktivieren
-        interrupts();
+        // // Interrupts aktivieren
+        // interrupts();
     }
 
     // Aktuelle Position als letzte Position speichern
@@ -289,6 +313,16 @@ void setup() {
     Serial.begin(SERIALMONITOR_BAUD);
     delay(1000);
     Serial.println("Starting setup...");
+
+        // LED Pin als Ausgang definieren
+    pinMode(GREEN_LED_PIN, OUTPUT);
+    digitalWrite(GREEN_LED_PIN, ledState); // Initialen Zustand setzen
+
+    // Button Pin als Eingang definieren und Pull-Up aktivieren
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+    // // Interrupt konfigurieren
+    // attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, CHANGE); // Interrupt bei jeder Änderung auslösen
 
     // SD-Karte initialisieren
     Serial.println("Initializing SD card..."); // Print initialization message
@@ -347,6 +381,13 @@ void loop() {
     currentTime = millis();
     static unsigned long lastPositionTime = 0;
     static const unsigned long switchTime = 250; // Wartezeit von mindestens 0,25 Sekunde
+
+    if (buttonPressed && (millis() - buttonPressTime >= DEBOUNCE_DELAY)) {
+        // Taster wurde für die erforderliche Zeit gedrückt gehalten
+        ledState = !ledState; // Zustand der LED umschalten
+        digitalWrite(GREEN_LED_PIN, ledState); // LED entsprechend setzen
+        buttonPressed = false; // Zurücksetzen, um wiederholtes Auslösen zu verhindern
+      }
 
     while (gpsSerial.available() > 0) {
         gps.encode(gpsSerial.read());

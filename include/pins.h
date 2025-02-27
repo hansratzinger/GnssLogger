@@ -19,6 +19,12 @@
 #define GREEN_LED_PIN  25    // Grüne LED an GPIO25 (output-fähig)
 #define RED_LED_PIN    26    // Rote LED an GPIO26 (output-fähig)
 
+// Button
+#define BUTTON_PIN 13 // Taster an GPIO13
+#define BUTTON_ACTIVE LOW // Taster schließt auf LOW
+#define DEBOUNCE_DELAY 1000 // Entprellzeit in Millisekunden (1 Sekunde)
+
+
 #define SD_CHECK(x) do { \
     int __err_rc = (x); \
     if (__err_rc != ESP_OK) { \
