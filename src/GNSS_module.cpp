@@ -1,5 +1,5 @@
 #include "FS.h"
-#include "SD_MMC.h"
+#include "SD.h"
 #include "SPI.h"
 #include <TinyGPS++.h>
 #include "GNSS_module.h"
@@ -30,7 +30,8 @@ double calculateDifference(double firstData, double secoundData) {
 }
 
 // CSV Header-Zeile 
-const char* CSV_HEADER = "timestamp,latitude,longitude,altitude,speed,course,satellites,hdop,distance\n";
+// CSV Header-Zeile 
+const char* CSV_HEADER = "date;time;latitude;directionLat;longitude;directionLng;speed;altitude;hdop;satellites;latDifference;lonDifference;positionDifference\n";
 
 // Funktion zum Schreiben der GNSS-Daten in CSV
 void writeGNSSDataToSD(File* file, TinyGPSPlus* gps, double distance) {

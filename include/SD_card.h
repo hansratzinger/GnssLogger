@@ -1,7 +1,7 @@
 #ifndef SD_CARD_H   // Wenn die Header-Datei noch nicht eingebunden wurde
 #define SD_CARD_H   // Makrodefinition zur Vermeidung der Mehrfacheinbindung
 #include <pins.h>
-#include "SD_MMC.h"
+#include "SD.h"
 #include <FS.h>
 #include <TinyGPSPlus.h>
 

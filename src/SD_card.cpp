@@ -39,7 +39,7 @@
  */
 
 #include <pins.h>
-#include "SD_MMC.h"
+#include "SD.h"
 #include "SD_card.h"
 #include <HardwareSerial.h>
 #include <TinyGPS++.h>
@@ -50,7 +50,7 @@ extern HardwareSerial gpsSerial; // Serial 2 verwenden
 // Funktion zum Schreiben in die Datei debug.txt
 void writeDebug(const String &message) {
   if (TEST) {
-      File file = SD_MMC.open("/debug.txt", FILE_APPEND);
+      File file = SD.open("/debug.txt", FILE_APPEND);
     if (file) {
       file.println(message);
       file.close();
@@ -77,13 +77,13 @@ void debugPrintln(const String &message) {
 String generateFileName(TinyGPSPlus& gps) {
     char fileName[32];
     if (gps.date.isValid()) {
-        snprintf(fileName, sizeof(fileName), "/GPS_%04d%02d%02d.csv", 
+        snprintf(fileName, sizeof(fileName), "/gps/GPS_%04d%02d%02d.csv", 
             gps.date.year(), 
             gps.date.month(), 
             gps.date.day());
     } else {
         // Fallback wenn kein gültiges GPS-Datum verfügbar
-        snprintf(fileName, sizeof(fileName), "/GPS_data.csv");
+        snprintf(fileName, sizeof(fileName), "/gps/GPS_data.csv");
     }
     Serial.printf("Generated filename: %s\n", fileName);
     return String(fileName);
@@ -176,24 +176,23 @@ bool writeFile(fs::FS &fs, const char * path, const char * message) {
 }
 
 bool appendFile(fs::FS &fs, const char * path, const char * message) {
-    Serial.printf("Appending to file: %s\n", path);
+  Serial.printf("Appending to file: %s\n", path);
 
-    File file = fs.open(path, FILE_APPEND);
-    if(!file) {
-        Serial.println("Failed to open file for appending");
-        return false;
-    }
-    
-    size_t bytesWritten = file.print(message);
-    if(bytesWritten == 0) {
-        Serial.println("Append failed");
-        file.close();
-        return false;
-    }
-    
-    Serial.printf("Appended %d bytes to file\n", bytesWritten);
+  File file = fs.open(path, FILE_APPEND);
+  if(!file){
+    Serial.println("Failed to open file for appending");
+    return false;
+  }
+  if(file.print(message)){
+    Serial.println("Message appended");
+  } else {
+    Serial.println("Append failed");
     file.close();
-    return true;
+    return false;
+  }
+  file.flush(); // Daten auf die SD-Karte schreiben
+  file.close();
+  return true;
 }
 
 void renameFile(fs::FS &fs, const char *path1, const char *path2) {
@@ -282,20 +281,22 @@ void writeCreationAndModificationDate(fs::FS &fs, const char *path, TinyGPSPlus 
 bool initSDCard() {
     Serial.println("initSDCard: Starting SD card initialization...");
 
-    // SD_MMC initialisieren
-    if (!SD_MMC.begin("/sdcard/GPS/", true)) {
+    // SD initialisieren
+    const int chipSelect = 5; // Ändern Sie dies entsprechend Ihrem Setup
+    Serial.printf("initSDCard: Initializing SD card with chipSelect %d\n", chipSelect);
+    if (!SD.begin(chipSelect)) {
         Serial.println("initSDCard: SD Card Mount Failed");
         return false;
     }
 
-    uint8_t cardType = SD_MMC.cardType();
+    uint8_t cardType = SD.cardType();
 
     if (cardType == CARD_NONE) {
         Serial.println("initSDCard: No SD Card attached");
         return false;
     }
 
-    Serial.print("initSDCard: SD_MMC Card Type: ");
+    Serial.print("initSDCard: SD Card Type: ");
     if (cardType == CARD_MMC) {
         Serial.println("MMC");
     } else if (cardType == CARD_SD) {

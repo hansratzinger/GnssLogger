@@ -35,6 +35,9 @@ unsigned long currentTime = 0;
 File gpsFile;
 String currentFileName;
 
+// Globale Variable für die SPI-Einstellungen
+SPISettings spiSettings(10000000, MSBFIRST, SPI_MODE0);
+
 extern const char* CSV_HEADER;
 const char* firstline = CSV_HEADER;  // Verwende CSV_HEADER als firstline
 
@@ -146,35 +149,45 @@ void sendDataViaESPNow(int rpmValue, double latitudeValue, double longitudeValue
 
 // Funktion zum Öffnen der SD-Karten-Datei
 bool openGPSFile() {
-    String fullPath = "/gps/";
+    String fullPath = generateFileName(gps);
     if (!SD.exists("/gps")) {
         if (!SD.mkdir("/gps")) {
             Serial.println("Fehler beim Erstellen des GPS-Verzeichnisses");
             return false;
         }
     }
-    fullPath += generateFileName(gps);
 
     // Überprüfen, ob sich der Dateiname geändert hat
     if (fullPath != currentFileName) {
         // Wenn sich der Dateiname geändert hat, die alte Datei schließen
         if (gpsFile) {
+            Serial.println("openGPSFile: Schliesse alte Datei");
             gpsFile.close();
         }
         currentFileName = fullPath;
+        Serial.printf("openGPSFile: Neuer Dateiname: %s\n", currentFileName.c_str());
     }
 
     // Wenn die Datei noch nicht geöffnet ist, öffnen Sie sie jetzt
     if (!gpsFile) {
-        // SPI Transaktion starten
-        SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
+        Serial.println("openGPSFile: Datei wird geöffnet...");
+        // // SPI Transaktion starten
+        // SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
         gpsFile = SD.open(currentFileName.c_str(), FILE_APPEND);
         if (!gpsFile) {
-            Serial.println("Fehler beim Öffnen der Datei");
-            SPI.endTransaction(); // SPI Transaktion beenden
+            Serial.println("openGPSFile: Fehler beim Öffnen der Datei");
+            // SPI.endTransaction(); // SPI Transaktion beenden
             return false;
         }
-        SPI.endTransaction(); // SPI Transaktion beenden
+
+        // CSV-Header schreiben, wenn die Datei neu erstellt wurde
+        if (gpsFile.size() == 0) {
+            Serial.println("openGPSFile: Schreibe CSV Header");
+            gpsFile.println(CSV_HEADER);
+            gpsFile.flush();
+        }
+        // SPI.endTransaction(); // SPI Transaktion beenden
+        Serial.println("openGPSFile: Datei erfolgreich geöffnet");
     }
     return true;
 }
@@ -255,20 +268,25 @@ void processPosition() {
     }
 
     // Auf SD-Karte schreiben
-    Serial.println("Writing to SD card...");
+    Serial.println("processPosition: Writing to SD card...");
     if (openGPSFile()) {
-    
-        // Interrupts deaktivieren
-        noInterrupts();
-    
-        if (openGPSFile()) {
-            gpsFile.println(logging);
-        } else {
-            Serial.println("Fehler beim Schreiben in die Datei");
-        }
+        Serial.println("processPosition: openGPSFile() erfolgreich");
         
-        // Interrupts aktivieren
-        interrupts();
+        // // Interrupts deaktivieren
+        // noInterrupts();
+    
+        // Serial.printf("processPosition: Writing data: %s\n", logging);
+        // gpsFile.println(logging);
+        // Serial.println("processPosition: Data written to file");
+        // gpsFile.flush();
+        // Serial.println("processPosition: File flushed");
+        // gpsFile.close();
+        // Serial.println("processPosition: File closed");
+        
+        // // Interrupts aktivieren
+        // interrupts();
+    } else {
+        Serial.println("processPosition: openGPSFile() fehlgeschlagen");
     }
 
     // Aktuelle Position als letzte Position speichern
@@ -280,7 +298,6 @@ void processPosition() {
     snprintf(altitudeLast, sizeof(altitudeLast), "%s", altitude);
     snprintf(hdopLast, sizeof(hdopLast), "%s", hdop);
     snprintf(satellitesLast, sizeof(satellitesLast), "%s", satellites);
-    snprintf(loggingLast, sizeof(loggingLast), "%s", logging);
 
     Serial.println("processPosition() finished");
 }
@@ -292,13 +309,27 @@ void setup() {
 
     // SD-Karte initialisieren
     Serial.println("Initializing SD card..."); // Print initialization message
-    if (!SD.begin()) { // Check if SD card is mounted successfully
+    if (!SD.begin(SD_CS)) { // Check if SD card is mounted successfully
       Serial.println("Failed to mount SD card"); // Print error message if SD card failed to mount
     delay(500);
     } else {
       Serial.println("SD card mounted successfully"); // Print success message if SD card is mounted successfull    }
     }
-    Serial.println("After SD card initialization...");
+    
+    // Statt SD-Karte initialisieren SPI initialisieren und SD-Karte initialisieren
+    // SD-Karte initialisieren
+    // Serial.println("Initializing SD card..."); // Print initialization message
+    // SPI.begin(); // SPI initialisieren
+    // SPI.beginTransaction(spiSettings); // SPI Transaktion starten
+    // if (!SD.begin(SD_CS)) { // Check if SD card is mounted successfully
+    // Serial.println("Failed to mount SD card"); // Print error message if SD card failed to mount
+    // delay(500);
+    // } else {
+    // Serial.println("SD card mounted successfully"); // Print success message if SD card is mounted successfull    }
+    // }
+    // SPI.endTransaction(); // SPI Transaktion beenden
+    // Serial.println("After SD card initialization...");
+
 
     // GPS initialisieren
     Serial.println("Initializing GPS...");
